@@ -18,7 +18,7 @@ import { World3D } from './world3d.js';
     mode: 'question', keys: new Set(), mouse: { x: 0, y: 0, down: false },
     lastThrow: 0, lastSend: 0, lastHud: 0, lastOutToast: 0,
     question: null, answering: false, qTimer: null,
-    koBy: '', deadAt: 0, feed: [], stick: null, results: null, looping: false,
+    koBy: '', deadAt: 0, openingRight: 0, openingDone: false, feed: [], stick: null, results: null, looping: false,
   };
 
   // ---------- screens ----------
@@ -190,7 +190,7 @@ import { World3D } from './world3d.js';
       }
     }
   });
-  socket.on('started', () => { if (S.pid) enterGame(); });
+  socket.on('started', () => { if (S.pid) { S.openingRight = 0; S.openingDone = false; enterGame(); } });
   socket.on('ended', (res) => { if (S.pid) showResults(res); });
   socket.on('kicked', () => leave('Your teacher removed you from the game.'));
   socket.on('closed', () => leave('That game has closed.'));
@@ -796,6 +796,7 @@ import { World3D } from './world3d.js';
     answer({ text: v }, null);
   };
 
+  const OPENING_ANSWERS = 2; // correct answers before the opening question window closes itself
   function answer(payload, btn) {
     if (S.answering || !S.question) return;
     S.answering = true;
@@ -825,6 +826,15 @@ import { World3D } from './world3d.js';
       buttons.forEach((b) => { b.disabled = true; });
       $('qinput').blur();
       S.question = null;
+      // Start of the game: after 2 correct answers, close the questions and send the player into the fight.
+      if (res.correct && !S.openingDone && ++S.openingRight >= OPENING_ANSWERS) {
+        S.openingDone = true;
+        S.qTimer = setTimeout(() => {
+          S.qTimer = null;
+          if (S.mode === 'question') { setMode('throw'); toast(coarse ? 'Snowballs ready! Tap Questions for more.' : 'Snowballs ready! Press 1 for more questions.', 2200); }
+        }, 900);
+        return;
+      }
       S.qTimer = setTimeout(loadQuestion, res.correct ? 700 : Math.max(1400, res.wait));
     });
   }

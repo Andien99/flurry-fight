@@ -25,20 +25,28 @@
         <label for="code" class="visually-hidden" hidden>Game code</label>
         <input id="code" class="code-input" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="Game code" aria-label="Game code">
         <p class="err" id="code-err" role="alert"></p>
-        <button class="btn-sun" type="submit">Join game</button>
+        <button class="btn-sun" type="submit">Next</button>
       </form>
 
-      <form id="f-name" class="join-step" hidden>
-        <div>
-          <label for="name">Your name</label>
-          <input id="name" maxlength="16" autocomplete="off" placeholder="First name and last initial">
-        </div>
-        <div>
-          <label>Colour</label>
-          <div class="swatches" id="swatches"></div>
+      <form id="f-name" class="join-step custom-step" hidden>
+        <h2 class="custom-title">Make your character</h2>
+        <div class="custom-grid">
+          <div class="custom-preview">
+            <canvas id="look-preview" width="280" height="280" aria-label="Your character"></canvas>
+            <button type="button" class="btn-small" id="look-random">Surprise me</button>
+          </div>
+          <div class="custom-opts">
+            <div>
+              <label for="name">Your name</label>
+              <input id="name" maxlength="16" autocomplete="off" placeholder="First name and last initial">
+            </div>
+            <div><label>Colour</label><div class="swatches" id="swatches"></div></div>
+            <div><label>Hat</label><div class="look-grid" id="hats"></div></div>
+            <div><label>Moustache</label><div class="look-grid" id="staches"></div></div>
+          </div>
         </div>
         <p class="err" id="name-err" role="alert"></p>
-        <button class="btn-sun" type="submit">Enter the arena</button>
+        <button class="btn-sun" type="submit">Join game</button>
         <button class="btn-ghost" type="button" id="back">Use a different code</button>
       </form>
     </div>
@@ -50,7 +58,7 @@
 <section id="s-wait" class="sky" hidden>
   <div class="join-wrap">
     <div class="wait-screen">
-      <canvas id="me-preview" width="120" height="120"></canvas>
+      <canvas id="me-preview" width="160" height="160"></canvas>
       <div class="big" id="wait-name"></div>
       <p>You're in. The game starts when your teacher presses Start.</p>
       <div class="pill-list" id="wait-list"></div>
@@ -61,43 +69,73 @@
 <!-- Game -->
 <section id="s-game" class="game" hidden>
   <canvas id="view"></canvas>
-  <div class="dmg" id="dmg"></div>
+  <div class="edge" id="edge" aria-hidden="true"><i class="e-low"></i><i class="e-hit"></i><i class="e-shield"></i><i class="e-heal"></i></div>
   <div class="crosshair" id="crosshair" aria-hidden="true"><i></i><i></i><i></i><i></i><b class="hitmark" id="hitmark"></b></div>
 
-  <div class="hud hud-top"><div class="timer" id="timer">5:00</div><div class="feed" id="feed" aria-live="polite"></div></div>
-  <div class="hud board" id="board"></div>
-  <div class="hud vitals">
-    <div class="vrow"><span>Health</span><b id="hp-num">100</b></div><div class="bar"><i id="hp-bar" style="width:100%"></i></div>
-    <div class="vrow"><span>Shield</span><b id="sh-num">0</b></div><div class="bar shield"><i id="sh-bar" style="width:0"></i></div>
-    <div class="vrow"><span>Stamina</span></div><div class="bar stamina"><i id="st-bar" style="width:100%"></i></div>
-  </div>
-  <canvas class="hud minimap" id="minimap" width="210" height="152" aria-label="Map"></canvas>
+  <div class="hud hud-top"><div class="timer" id="timer">5:00</div></div>
 
-  <div class="modebar" role="group" aria-label="Mode">
-    <button id="m-q" aria-pressed="true"><kbd>1</kbd> Answer questions</button>
-    <button id="m-t" aria-pressed="false"><kbd>2</kbd> Throw</button>
-    <div class="ammo-big" id="ammo-box" aria-label="Snowballs"><span class="flake" aria-hidden="true">❄</span><b id="ammo">0</b></div>
+  <!-- game status chat -->
+  <ol class="hud log" id="log" aria-live="polite" aria-label="Game updates"></ol>
+
+  <!-- map and leaderboard, top right -->
+  <div class="hud mapbox">
+    <button type="button" class="mini-wrap" id="mini-open" aria-label="Open the map (M)">
+      <canvas class="minimap" id="minimap" width="200" height="110"></canvas>
+      <span class="key-diamond key-m"><b>M</b></span>
+    </button>
+    <div class="board" id="board"></div>
+  </div>
+  <div class="bigmap" id="bigmap" hidden>
+    <div class="bigmap-card">
+      <div class="bigmap-head"><b>Map</b><span class="spacer"></span><span class="esc-hint"><kbd>M</kbd> or <kbd>Esc</kbd> to close</span><button type="button" class="x-btn" id="bigmap-close" aria-label="Close map">×</button></div>
+      <canvas id="bigmap-canvas" width="1200" height="650"></canvas>
+    </div>
+  </div>
+
+  <!-- player card, bottom left -->
+  <div class="pcard" id="pcard">
+    <canvas class="portrait" id="portrait" width="240" height="240" aria-hidden="true"></canvas>
+    <div class="pfloat" id="pfloat" aria-hidden="true"></div>
+    <div class="pslab">
+      <div class="pbar sh"><i id="sh-bar" style="width:0"></i><b id="sh-num">0/100</b></div>
+      <div class="pbar hp"><i id="hp-bar" style="width:100%"></i><b id="hp-num">100/100</b></div>
+      <div class="pbar st"><i id="st-bar" style="width:100%"></i></div>
+    </div>
+  </div>
+  <div class="hud pkeys" id="pkeys">
+    <button type="button" class="pkey" id="m-q" aria-pressed="true"><span class="key-diamond"><b>1</b></span><span class="pk-label">Questions</span></button>
+    <button type="button" class="pkey" id="m-t" aria-pressed="false"><span class="key-diamond"><b>2</b></span><span class="pk-label">Throw</span></button>
+    <div class="pammo" id="ammo-box" aria-label="Snowballs"><span class="flake" aria-hidden="true"></span><b id="ammo">0</b></div>
   </div>
   <div class="out-hint" id="out-hint" hidden>Out of snowballs. Answer questions to make more.</div>
 
   <div class="aim-overlay" id="aim-overlay" hidden>
     <button class="aim-card" id="aim-btn" type="button">
       <b>Click to aim</b>
-      <span class="keys"><kbd>Mouse</kbd> look <kbd>Click</kbd> throw <kbd>W A S D</kbd> move <kbd>Shift</kbd> run <kbd>Space</kbd> jump <kbd>1</kbd> questions <kbd>Esc</kbd> free the mouse</span>
+      <span class="keys"><kbd>Mouse</kbd> look <kbd>Click</kbd> throw <kbd>W A S D</kbd> move <kbd>Shift</kbd> run <kbd>Space</kbd> jump <kbd>1</kbd> questions <kbd>M</kbd> map <kbd>Esc</kbd> free the mouse</span>
     </button>
   </div>
 
-  <aside class="qpanel" id="qpanel" aria-label="Question">
-    <div class="streak" id="streak"></div>
-    <div class="qtext" id="qtext">Loading a question…</div>
-    <div class="opts" id="opts"></div>
-    <form id="qform" hidden>
-      <input id="qinput" autocomplete="off" placeholder="Type your answer">
-      <button class="btn-sun" type="submit">Check</button>
-    </form>
-    <div class="feedback" id="qfeedback" hidden></div>
-    <p class="qhint">Every correct answer makes snowballs. Press 2 or click the arena to start throwing. You can still move with WASD while you answer, and the arrow keys turn you. Duck into trees or igloos to hide.</p>
-  </aside>
+  <!-- question popup -->
+  <div class="qmodal" id="qpanel" role="dialog" aria-modal="false" aria-labelledby="qtext" hidden>
+    <div class="qcard" id="qcard">
+      <div class="qhead">
+        <span class="streak" id="streak"></span>
+        <span class="spacer"></span>
+        <span class="esc-hint"><kbd>Esc</kbd> back to throwing</span>
+        <button type="button" class="x-btn" id="q-close" aria-label="Close question and go back to throwing">×</button>
+      </div>
+      <div class="qtext" id="qtext">Loading a question…</div>
+      <div class="opts" id="opts"></div>
+      <form id="qform" hidden>
+        <input id="qinput" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Type your answer">
+        <button class="btn-sun" type="submit">Check</button>
+      </form>
+      <div class="keypad" id="keypad" hidden></div>
+      <div class="feedback" id="qfeedback" hidden></div>
+      <p class="qhint">Every correct answer makes snowballs. You can keep moving with W A S D while you answer.</p>
+    </div>
+  </div>
 
   <div class="ko-overlay" id="ko" hidden><div><div class="big">Knocked out</div><p id="ko-by"></p><p id="ko-count"></p></div></div>
   <div class="toast" id="toast" hidden></div>
@@ -127,6 +165,7 @@
 <script defer src="/vendor/katex/contrib/auto-render.min.js"></script>
 <script src="shared.js"></script>
 <script src="sprites.js"></script>
+<script src="avatar.js"></script>
 <script src="render.js"></script>
 <script type="importmap">{ "imports": { "three": "/vendor/three/three.module.min.js", "three/addons/": "/vendor/three-addons/" } }</script>
 <script type="module" src="play.js"></script>

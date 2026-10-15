@@ -357,13 +357,110 @@ function drawTag(tag, name, hp, shield) {
   g.fillStyle = '#fff'; g.fillText(name, 128, 24);
   g.fillStyle = 'rgba(27,42,74,0.6)'; g.fillRect(68, 54, 120, 14);
   g.fillStyle = hp > 50 ? '#57c46a' : hp > 25 ? '#ffc93c' : '#e2453c'; g.fillRect(70, 56, 116 * Math.max(0, hp) / 100, 10);
-  if (shield > 0) { g.fillStyle = '#5aa8ff'; g.fillRect(70, 48, 116 * shield / 100, 5); }
+  if (shield > 0) {
+    g.fillStyle = '#5aa8ff'; g.fillRect(70, 48, 116 * shield / 100, 5);
+    // little shield badge
+    g.fillStyle = '#5aa8ff'; g.strokeStyle = '#1b2a4a'; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(50, 46); g.lineTo(62, 50); g.quadraticCurveTo(62, 66, 50, 74); g.quadraticCurveTo(38, 66, 38, 50); g.closePath(); g.fill(); g.stroke();
+  }
   tex.needsUpdate = true;
 }
+
+function buildHat(style, hat, R) {
+  const g = new THREE.Group();
+  const top = R * 2;
+  const black = toon(0x2b2f3a), white = toon(SNOW), gold = toon(0xffc93c);
+  switch (style) {
+    case 'tophat':
+      g.add(mesh(G('th-brim', () => new THREE.CylinderGeometry(21, 21, 2.5, 20)), black, 0, top - 4, 0, true, 1.04));
+      g.add(mesh(G('th-crown', () => new THREE.CylinderGeometry(13, 13, 26, 18)), black, 0, top + 9, 0, true, 1.05));
+      g.add(mesh(G('th-band', () => new THREE.CylinderGeometry(13.4, 13.4, 5, 18)), toon(hat), 0, top + 0.5, 0, false));
+      break;
+    case 'cowboy': {
+      const brown = toon(0x9c6a3e);
+      const brim = mesh(G('cb-brim', () => new THREE.CylinderGeometry(32, 30, 2.5, 22)), brown, 0, top - 4, 0, true, 1.03);
+      g.add(brim);
+      g.add(mesh(G('cb-crown', () => new THREE.CylinderGeometry(12, 15, 16, 16)), brown, 0, top + 5, 0, true, 1.05));
+      g.add(mesh(G('cb-band', () => new THREE.CylinderGeometry(15.2, 15.2, 4, 16)), toon(hat), 0, top - 0.5, 0, false));
+      break;
+    }
+    case 'crown':
+      g.add(mesh(G('cr-ring', () => new THREE.CylinderGeometry(14, 14, 9, 18, 1, true)), toon(0xffc93c, { side: THREE.DoubleSide }), 0, top - 1, 0, false));
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        g.add(mesh(G('cr-pt', () => new THREE.ConeGeometry(4, 10, 6)), gold, Math.cos(a) * 13, top + 8, Math.sin(a) * 13, true, 1.1));
+      }
+      for (const [x, c] of [[-7, 0xe2453c], [0, 0x3a86ff], [7, 0x7ac74f]]) g.add(mesh(G('gem', () => new THREE.SphereGeometry(2.4, 8, 6)), toon(c), x, top - 1, 13.5, false));
+      break;
+    case 'viking': {
+      g.add(mesh(G('vk-dome', () => new THREE.SphereGeometry(R + 1.5, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.42)), toon(0x9aa5b6), 0, R + 1, 0, true, 1.04));
+      g.add(mesh(G('vk-band', () => new THREE.CylinderGeometry(R * 0.9, R * 0.9, 4, 20, 1, true)), toon(0xc9a227, { side: THREE.DoubleSide }), 0, R + 9, 0, false));
+      for (const sgn of [-1, 1]) {
+        const horn = mesh(G('horn', () => new THREE.ConeGeometry(4.5, 22, 8)), toon(0xf3ead5), sgn * 22, top - 2, 0, true, 1.1);
+        horn.rotation.z = -sgn * 0.9; g.add(horn);
+      }
+      break;
+    }
+    case 'earmuffs': {
+      const band = mesh(G('em-band', () => new THREE.TorusGeometry(R + 1, 2.4, 6, 20, Math.PI)), toon(hat), 0, R, 0, true, 1.12);
+      g.add(band);
+      for (const sgn of [-1, 1]) g.add(mesh(G('muff', () => new THREE.SphereGeometry(8, 12, 8)), toon(hat), sgn * (R + 1), R, 0, true, 1.08));
+      break;
+    }
+    case 'propeller': {
+      g.add(mesh(G('pc-cap', () => new THREE.SphereGeometry(R + 1.2, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.42)), toon(hat), 0, R + 1, 0, true, 1.05));
+      const visor = mesh(G('pc-visor', () => new THREE.CylinderGeometry(12, 12, 2, 16, 1, false, -Math.PI / 2, Math.PI)), toon(shade('#' + hat.toString(16).padStart(6, '0'), -0.3)), 0, R + 9, 16, false);
+      g.add(visor);
+      g.add(mesh(G('pc-stem', () => new THREE.CylinderGeometry(1, 1, 7, 6)), toon(INK), 0, top + 4, 0, false));
+      const prop = new THREE.Group(); prop.position.set(0, top + 7.5, 0);
+      prop.add(mesh(G('blade', () => new THREE.BoxGeometry(26, 1.2, 5)), toon(0xe2453c), 0, 0, 0, true, 1.12));
+      const b2 = mesh(G('blade', () => new THREE.BoxGeometry(26, 1.2, 5)), toon(0xffc93c), 0, 0.4, 0, true, 1.12); b2.rotation.y = Math.PI / 2; prop.add(b2);
+      prop.userData.spin = true;
+      g.add(prop);
+      break;
+    }
+    case 'none': {
+      const tuft = mesh(G('tuft', () => new THREE.ConeGeometry(4, 11, 6)), toon(0x5a3a24), 0, top + 3, 2, true, 1.1);
+      tuft.rotation.z = 0.3; g.add(tuft);
+      break;
+    }
+    default: { // beanie
+      g.add(mesh(G('beanie', () => new THREE.SphereGeometry(R + 1.2, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.42)), toon(hat), 0, R + 1, 0, true, 1.05));
+      const band = mesh(G('bband', () => new THREE.TorusGeometry(R * 0.86, 3.2, 8, 24)), white, 0, R + 10, 0, false);
+      band.rotation.x = Math.PI / 2; g.add(band);
+      g.add(mesh(G('pom', () => new THREE.SphereGeometry(5.5, 10, 8)), white, 0, top + 4, 0));
+    }
+  }
+  return g;
+}
+
+function buildStache(style, R) {
+  const g = new THREE.Group();
+  if (!style || style === 'none') return g;
+  const hair = toon(0x5a3a24);
+  const y = R - 5, z = 20.5;
+  const lobe = (x, sx = 1.6, rot = 0) => { const m = mesh(G('st-lobe', () => new THREE.SphereGeometry(3.4, 10, 8)), hair, x, y, z, true, 1.15); m.scale.set(sx, 0.7, 0.6); m.rotation.z = rot; g.add(m); };
+  if (style === 'classic') { lobe(-4, 1.6, 0.25); lobe(4, 1.6, -0.25); }
+  else if (style === 'handlebar') {
+    lobe(-4, 1.7, 0.2); lobe(4, 1.7, -0.2);
+    for (const sgn of [-1, 1]) { const c = mesh(G('st-curl', () => new THREE.TorusGeometry(2.6, 1.1, 6, 10, Math.PI * 1.4)), hair, sgn * 11, y + 2, z - 0.5, false); c.rotation.z = sgn > 0 ? Math.PI * 0.9 : -Math.PI * 0.3; g.add(c); }
+  } else if (style === 'walrus') { const m = mesh(G('st-walrus', () => new THREE.SphereGeometry(4.5, 10, 8)), hair, 0, y - 1.5, z, true, 1.1); m.scale.set(2.4, 1.05, 0.7); g.add(m); }
+  else if (style === 'pencil') { g.add(mesh(G('st-pencil', () => new THREE.BoxGeometry(14, 1.6, 1.5)), hair, 0, y + 0.5, z + 0.6, false)); }
+  else if (style === 'curly') {
+    lobe(-3.5, 1.3, 0.15); lobe(3.5, 1.3, -0.15);
+    for (const sgn of [-1, 1]) { const c = mesh(G('st-curly', () => new THREE.TorusGeometry(2.8, 1.2, 6, 12)), hair, sgn * 9.5, y + 0.5, z - 0.3, false); g.add(c); }
+  }
+  return g;
+}
+
+const flashMat = new THREE.MeshBasicMaterial({ color: 0xff2a2a, transparent: true, opacity: 0, depthWrite: false });
+const bubbleMat = new THREE.MeshBasicMaterial({ color: 0x5aa8ff, transparent: true, opacity: 0.16, depthWrite: false });
+const bubbleWire = new THREE.MeshBasicMaterial({ color: 0x9cd0ff, transparent: true, opacity: 0.55, wireframe: true, depthWrite: false });
 
 function buildCharacter(info, teams) {
   const R = F.PLAYER_RADIUS;
   const colour = info.colour || '#888888';
+  const look = info.look || {};
   const hatHex = teams && info.team ? F.TEAM_COLOURS[info.team] : null;
   const hat = hatHex ? parseInt(hatHex.slice(1), 16) : shade(colour, -0.35);
   const root = new THREE.Group();
@@ -373,11 +470,12 @@ function buildCharacter(info, teams) {
   face.scale.set(1, 0.85, 0.55); body.add(face);
   for (const x of [-5.5, 5.5]) body.add(mesh(G('peye', () => new THREE.SphereGeometry(2.6, 8, 6)), toon(INK), x, R + 1, 21.5, false));
   for (const x of [-9.5, 9.5]) { const c = mesh(G('cheek', () => new THREE.SphereGeometry(2.2, 6, 6)), toon(0xf2a0a8), x, R - 5, 19.5, false); body.add(c); }
-  const beanie = mesh(G('beanie', () => new THREE.SphereGeometry(R + 1.2, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.42)), toon(hat), 0, R + 1, 0, true, 1.05);
-  body.add(beanie);
-  const band = mesh(G('bband', () => new THREE.TorusGeometry(R * 0.86, 3.2, 8, 24)), toon(SNOW), 0, R + 10, 0, false);
-  band.rotation.x = Math.PI / 2; body.add(band);
-  body.add(mesh(G('pom', () => new THREE.SphereGeometry(5.5, 10, 8)), toon(SNOW), 0, R * 2 + 4, 0));
+  body.add(buildStache(look.stache, R));
+  const hatGroup = buildHat(look.hat || 'beanie', hat, R);
+  let prop = null;
+  hatGroup.traverse((m) => { if (m.userData.spin) prop = m; });
+  if (prop) { hatGroup.remove(prop); }
+  body.add(hatGroup);
   const mitR = mesh(G('mitten', () => new THREE.SphereGeometry(6.5, 10, 8)), toon(hat), 19, R - 2, 14);
   const mitL = mesh(G('mitten', () => new THREE.SphereGeometry(6.5, 10, 8)), toon(hat), -24, R - 4, 2);
   body.add(mitR, mitL);
@@ -385,11 +483,131 @@ function buildCharacter(info, teams) {
     const ring = new THREE.Mesh(G('tring', () => new THREE.RingGeometry(R + 2, R + 6, 24).rotateX(-Math.PI / 2)), new THREE.MeshBasicMaterial({ color: parseInt(F.TEAM_COLOURS[info.team].slice(1), 16) }));
     ring.position.y = 0.9; root.add(ring);
   }
-  mergeLocal(body); // ~25 meshes become ~9, which matters with a full class on screen
+  mergeLocal(body); // ~30 meshes become ~10, which matters with a full class on screen
+  if (prop) body.add(prop);
+  // red flash when hit, and a hex bubble while shielded
+  const flash = new THREE.Mesh(G('flash', () => new THREE.SphereGeometry(R * 1.12, 16, 12)), flashMat.clone());
+  flash.position.y = R; flash.renderOrder = 3; body.add(flash);
+  const bubble = new THREE.Group();
+  bubble.add(new THREE.Mesh(G('bubble', () => new THREE.SphereGeometry(R * 1.55, 20, 14)), bubbleMat.clone()));
+  bubble.add(new THREE.Mesh(G('bubblewire', () => new THREE.IcosahedronGeometry(R * 1.58, 1)), bubbleWire.clone()));
+  bubble.position.y = R; bubble.visible = false; bubble.renderOrder = 4; body.add(bubble);
   const shadow = blob(0, 0, 54, 54); root.add(shadow);
-  const tag = nameTag(); tag.position.y = R * 2 + 30; root.add(tag);
-  root.userData = { body, tag, shadow, mitR, key: `${colour}|${hat}|${info.team}` };
+  const tag = nameTag(); tag.position.y = R * 2 + 34; root.add(tag);
+  root.userData = { body, tag, shadow, mitR, prop, flash, bubble, hitAt: -1e9, shieldAt: -1e9 };
   return root;
+}
+
+// ---------- lodges ----------
+function boxUV(geo, w, h, d, tile) {
+  // BoxGeometry faces: +x, -x, +y, -y, +z, -z (4 vertices each). Scale UVs to world size so textures tile.
+  const uv = geo.attributes.uv;
+  const dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
+  for (let f = 0; f < 6; f++) for (let v = 0; v < 4; v++) {
+    const i = f * 4 + v;
+    uv.setXY(i, uv.getX(i) * dims[f][0] / tile, uv.getY(i) * dims[f][1] / tile);
+  }
+  uv.needsUpdate = true;
+  return geo;
+}
+const logWallTex = () => canvasTex(128, 128, (g, w, h) => {
+  for (let i = 0; i < 4; i++) {
+    const y = i * 32;
+    const grd = g.createLinearGradient(0, y, 0, y + 32);
+    grd.addColorStop(0, '#a8744a'); grd.addColorStop(0.5, '#8f5d36'); grd.addColorStop(1, '#6b4428');
+    g.fillStyle = grd; g.fillRect(0, y, w, 32);
+    g.strokeStyle = '#4a2f1c'; g.lineWidth = 3; g.beginPath(); g.moveTo(0, y + 31); g.lineTo(w, y + 31); g.stroke();
+    g.strokeStyle = 'rgba(74,47,28,0.4)'; g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo((i * 37) % 128, y + 12); g.lineTo((i * 37) % 128 + 30, y + 14); g.stroke();
+  }
+}, null);
+const plankTex = () => canvasTex(128, 128, (g, w, h) => {
+  g.fillStyle = '#b98a57'; g.fillRect(0, 0, w, h);
+  g.strokeStyle = 'rgba(107,68,40,0.55)'; g.lineWidth = 2;
+  for (let y = 0; y <= h; y += 32) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
+  for (const [x, y] of [[40, 0], [100, 32], [20, 64], [80, 96]]) { g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 32); g.stroke(); }
+}, null);
+
+function buildLodge(L) {
+  const g = new THREE.Group();
+  const wallTex = logWallTex(); wallTex.wrapS = wallTex.wrapT = THREE.RepeatWrapping;
+  const deckTex = plankTex(); deckTex.wrapS = deckTex.wrapT = THREE.RepeatWrapping;
+  const wallMat = toon(0xffffff, { map: wallTex }), deckMat = toon(0xffffff, { map: deckTex }), trim = toon(0x5c3a22), snow = toon(SNOW);
+  for (const [x, y, w, d, b, t, kind] of L.boxes) {
+    const h = t - b;
+    const geo = boxUV(new THREE.BoxGeometry(w, h, d), w, h, d, kind === 'slab' ? 64 : 48);
+    const m = mesh(geo, kind === 'slab' ? deckMat : kind === 'parapet' ? toon(0xffffff, { map: wallTex }) : wallMat, x + w / 2, b + h / 2, y + d / 2, true, 1.0);
+    m.children[0].scale.set(1 + 2 / w, 1 + 2 / h, 1 + 2 / d); // even outline thickness
+    g.add(m);
+    if (kind === 'parapet' || (kind === 'wall' && t === 96 && b === 0 && false)) {
+      g.add(mesh(new THREE.BoxGeometry(w + 2, 3, d + 2), snow, x + w / 2, t + 1.5, y + d / 2, false));
+    }
+    if (kind === 'wall' && b > 0) g.add(mesh(new THREE.BoxGeometry(w + 3, 3, d + 3), trim, x + w / 2, b + 1.5, y + d / 2, false)); // window/door heads
+    if (kind === 'wall' && b === 0 && t < 50) g.add(mesh(new THREE.BoxGeometry(w + 4, 3, d + 4), snow, x + w / 2, t + 1.5, y + d / 2, false)); // window sills
+  }
+  // floor inside the room
+  const slab = L.boxes.find((b) => b[6] === 'slab');
+  const floorGeo = new THREE.PlaneGeometry(slab[2] - 24, slab[3] - 24).rotateX(-Math.PI / 2);
+  const uv = floorGeo.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * (slab[2] - 24) / 64, uv.getY(i) * (slab[3] - 24) / 64);
+  const floor = new THREE.Mesh(floorGeo, deckMat); floor.position.set(slab[0] + slab[2] / 2, 0.8, slab[1] + slab[3] / 2); g.add(floor);
+  // snow piled on the deck corners and a lantern by the door
+  for (const [dx, dy] of [[14, 14], [slab[2] - 14, 14], [14, slab[3] - 14], [slab[2] - 14, slab[3] - 14]]) {
+    const s = mesh(G('decksnow', () => new THREE.SphereGeometry(12, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2)), snow, slab[0] + dx, slab[5], slab[1] + dy, false);
+    s.scale.y = 0.5; g.add(s);
+  }
+  // stairs: visible steps (the physics is a smooth slope)
+  const r = L.ramp, steps = 13, dir = Math.sign(r.highX - r.lowX), run = Math.abs(r.highX - r.lowX);
+  for (let i = 0; i < steps; i++) {
+    const h = (r.top * (i + 1)) / steps;
+    const x0 = r.lowX + dir * (run * i) / steps, x1 = r.lowX + dir * (run * (i + 1)) / steps;
+    const cx = (x0 + x1) / 2, sw = Math.abs(x1 - x0);
+    const step = mesh(boxUV(new THREE.BoxGeometry(sw, h, r.h), sw, h, r.h, 48), wallMat, cx, h / 2, r.y + r.h / 2, true, 1.0);
+    step.children[0].scale.set(1 + 2 / sw, 1 + 2 / h, 1 + 2 / r.h);
+    g.add(step);
+    g.add(mesh(new THREE.BoxGeometry(sw, 2.5, r.h - 6), snow, cx, h + 1.2, r.y + r.h / 2, false));
+  }
+  const landX0 = r.highX, landX1 = dir > 0 ? r.x + r.w : r.x;
+  const lw = Math.abs(landX1 - landX0);
+  const land = mesh(boxUV(new THREE.BoxGeometry(lw, r.top, r.h), lw, r.top, r.h, 48), wallMat, (landX0 + landX1) / 2, r.top / 2, r.y + r.h / 2, true, 1.0);
+  land.children[0].scale.set(1 + 2 / lw, 1 + 2 / r.top, 1 + 2 / r.h); g.add(land);
+  g.add(mesh(new THREE.BoxGeometry(lw, 2.5, r.h - 6), deckMat, (landX0 + landX1) / 2, r.top + 1.2, r.y + r.h / 2, false));
+  // railing posts along the outer edge of the stairs (looks only; you can still jump off)
+  for (let i = 0; i <= 6; i++) {
+    const x = r.lowX + dir * (run * i) / 6, h = (r.top * i) / 6 + 30;
+    g.add(mesh(G('rpost', () => new THREE.BoxGeometry(4, 30, 4)), trim, x - dir * 4, h - 15, r.y + r.h - 3, false));
+  }
+  const railLen = Math.hypot(run, r.top);
+  const rail = mesh(new THREE.BoxGeometry(railLen, 3, 3), trim, (r.lowX + r.highX) / 2, r.top / 2 + 30, r.y + r.h - 3, false);
+  rail.rotation.z = dir * Math.atan2(r.top, run); g.add(rail);
+  // a sign over the door
+  const door = L.boxes.find((b) => b[6] === 'wall' && b[4] === 80);
+  const signTex = canvasTex(256, 64, (c, w, h) => {
+    c.fillStyle = '#6b4428'; c.fillRect(0, 0, w, h); c.strokeStyle = '#2b3445'; c.lineWidth = 6; c.strokeRect(3, 3, w - 6, h - 6);
+    c.fillStyle = '#ffe9b0'; c.font = '800 38px "Bricolage Grotesque", system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('LODGE', w / 2, h / 2 + 2);
+  });
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(60, 15), new THREE.MeshBasicMaterial({ map: signTex }));
+  const outward = door[0] < F.MAP.width / 2 ? 1 : -1;
+  sign.position.set(door[0] + (outward > 0 ? door[2] + 0.8 : -0.8), 88, door[1] + door[3] / 2);
+  sign.rotation.y = outward * Math.PI / 2;
+  g.add(sign);
+  return g;
+}
+
+function plusSprite(colour) {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d');
+  g.fillStyle = colour; g.strokeStyle = '#1b2a4a'; g.lineWidth = 6; g.lineJoin = 'round';
+  g.beginPath(); g.moveTo(24, 8); g.lineTo(40, 8); g.lineTo(40, 24); g.lineTo(56, 24); g.lineTo(56, 40); g.lineTo(40, 40); g.lineTo(40, 56); g.lineTo(24, 56); g.lineTo(24, 40); g.lineTo(8, 40); g.lineTo(8, 24); g.lineTo(24, 24); g.closePath();
+  g.stroke(); g.fill();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function shieldSprite() {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d');
+  g.fillStyle = '#5aa8ff'; g.strokeStyle = '#1b2a4a'; g.lineWidth = 5; g.lineJoin = 'round';
+  g.beginPath(); g.moveTo(32, 6); g.lineTo(54, 14); g.quadraticCurveTo(54, 44, 32, 58); g.quadraticCurveTo(10, 44, 10, 14); g.closePath(); g.fill(); g.stroke();
+  g.fillStyle = '#d6ecff'; g.beginPath(); g.moveTo(32, 14); g.lineTo(46, 19); g.quadraticCurveTo(46, 40, 32, 50); g.closePath(); g.fill();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 
 // ---------- the world ----------
@@ -425,6 +643,7 @@ export class World3D {
     WOOD_TEX = woodTex(); BIRCH_TEX = birchTex(); RINGS_TEX = ringsTex();
     this.buildGround();
     this.buildFenceBorder();
+    for (const L of F.LODGES || []) this.scene.add(buildLodge(L));
     this.buildScenery();
     F.OBJECTS.forEach((o, i) => {
       let g;
@@ -615,16 +834,46 @@ export class World3D {
       this.scene.add(m);
     }
   }
-  floatText(text, x, y, h, colour = '#ffc93c') {
-    const c = document.createElement('canvas'); c.width = 256; c.height = 96;
+  floatText(text, x, y, h, colour = '#ffc93c', life = 1, size = 34) {
+    // size the canvas to the text so long labels ("+5 snowballs") aren't clipped
+    const font = '800 64px "Bricolage Grotesque", system-ui, sans-serif';
+    const m = document.createElement('canvas').getContext('2d'); m.font = font;
+    const cw = Math.ceil(m.measureText(text).width + 28), c = document.createElement('canvas'); c.width = cw; c.height = 96;
     const g = c.getContext('2d');
-    g.font = '800 64px "Bricolage Grotesque", system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.lineWidth = 10; g.strokeStyle = '#1b2a4a'; g.strokeText(text, 128, 48); g.fillStyle = colour; g.fillText(text, 128, 48);
+    g.font = font; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.lineWidth = 10; g.lineJoin = 'round'; g.strokeStyle = '#1b2a4a'; g.strokeText(text, cw / 2, 48); g.fillStyle = colour; g.fillText(text, cw / 2, 48);
     const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
-    s.scale.set(90, 34, 1); s.position.set(x, h, y); s.renderOrder = 5;
+    s.scale.set(size * cw / 96, size, 1); s.position.set(x, h, y); s.renderOrder = 5;
     this.scene.add(s);
-    this.fx.push({ s, t: 0, life: 1 });
+    this.fx.push({ s, t: 0, life, rise: 40 });
+  }
+
+  // ---------- feedback for hits, shields and heals ----------
+  hitPlayer(pid, x, y, z, dmg, shieldHit, byMe) {
+    const ch = this.players.get(pid);
+    if (ch) ch.userData.hitAt = performance.now();
+    this.floatText(`-${dmg}`, x, y, (z || 30) + 22, shieldHit ? '#7cc0ff' : byMe ? '#ff4b3e' : '#ff8a80', 0.75);
+  }
+  spriteBurst(tex, x, y, h, n, size) {
+    for (let i = 0; i < n; i++) {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+      const a = (i / n) * Math.PI * 2 + Math.random() * 0.6, d = 18 + Math.random() * 14;
+      s.position.set(x + Math.cos(a) * d, h + Math.random() * 20, y + Math.sin(a) * d);
+      const sc = size * (0.7 + Math.random() * 0.5); s.scale.set(sc, sc, 1); s.renderOrder = 6;
+      this.scene.add(s);
+      this.fx.push({ s, t: -i * 0.06, life: 1.1, rise: 45 + Math.random() * 25 });
+    }
+  }
+  healEffect(pid, x, y, z) {
+    this.plusTex = this.plusTex || plusSprite('#57d36a');
+    this.spriteBurst(this.plusTex, x, y, (z || 0) + 20, 6, 16);
+  }
+  shieldEffect(pid, x, y, z) {
+    const ch = this.players.get(pid);
+    if (ch) ch.userData.shieldAt = performance.now();
+    this.shieldTex = this.shieldTex || shieldSprite();
+    this.spriteBurst(this.shieldTex, x, y, (z || 0) + 20, 4, 18);
   }
 
   // ---------- per-frame sync with game state ----------
@@ -634,7 +883,7 @@ export class World3D {
       if (p.id === world.meId || !p.alive || !p.connected || p.hidden || p.x == null) continue;
       const info = world.roster.get(p.id) || {};
       let ch = this.players.get(p.id);
-      const key = `${info.colour}|${world.teams}|${info.team}`;
+      const key = `${info.colour}|${world.teams}|${info.team}|${(info.look || {}).hat}|${(info.look || {}).stache}`;
       if (ch && ch.userData.rosterKey !== key) { this.scene.remove(ch); ch = null; }
       if (!ch) { ch = buildCharacter(info, world.teams); ch.userData.rosterKey = key; this.players.set(p.id, ch); this.scene.add(ch); }
       seen.add(p.id);
@@ -644,9 +893,28 @@ export class World3D {
       ch.userData.tag.position.y = z + F.PLAYER_RADIUS * 2 + 30;
       const s = Math.max(0.4, 1 - z / 120); ch.userData.shadow.scale.set(54 * s, 1, 54 * s);
       ch.userData.body.rotation.y = Math.atan2(Math.cos(p.angle || 0), Math.sin(p.angle || 0));
+      ch.userData.tag.position.y = z + F.PLAYER_RADIUS * 2 + 34;
       drawTag(ch.userData.tag, info.name || '', p.hp, p.shield);
       const flick = p.inv && Math.floor(now / 100) % 2 === 0;
       ch.userData.body.visible = !flick;
+      const u = ch.userData;
+      if (u.prop) u.prop.rotation.y = now / 90;
+      // red flash and a shake when hit
+      const sinceHit = (now - u.hitAt) / 1000;
+      const f = sinceHit < 0.6 ? 1 - sinceHit / 0.6 : 0;
+      u.flash.material.opacity = f * 0.65;
+      u.flash.visible = f > 0;
+      u.body.position.x = f > 0 ? Math.sin(now / 18) * 3 * f : 0;
+      u.flash.scale.setScalar(1 + (1 - f) * 0.15);
+      // shield bubble while shielded, pulsing when it goes up
+      u.bubble.visible = p.shield > 0;
+      if (u.bubble.visible) {
+        const sinceShield = (now - u.shieldAt) / 1000;
+        const pulse = sinceShield < 0.6 ? 1 + Math.sin(sinceShield / 0.6 * Math.PI) * 0.18 : 1;
+        u.bubble.scale.setScalar(pulse);
+        u.bubble.rotation.y = now / 1500;
+        u.bubble.children[0].material.opacity = 0.1 + 0.08 * (p.shield / 100) + (sinceShield < 0.6 ? 0.15 : 0);
+      }
     }
     for (const [id, ch] of this.players) if (!seen.has(id)) { this.scene.remove(ch); this.players.delete(id); }
   }
@@ -668,7 +936,7 @@ export class World3D {
     const seen = new Set();
     for (const k of world.pickups) {
       let g = this.pickups.get(k[0]);
-      if (!g) { g = buildPickup(k[1]); g.position.set(k[2], 0, k[3]); this.pickups.set(k[0], g); this.scene.add(g); }
+      if (!g) { g = buildPickup(k[1]); g.position.set(k[2], k[4] || 0, k[3]); this.pickups.set(k[0], g); this.scene.add(g); }
       seen.add(k[0]);
       g.userData.item.position.y = 26 + Math.sin(now / 300 + k[0]) * 4;
       g.userData.item.rotation.y = now / 700;
@@ -738,7 +1006,9 @@ export class World3D {
     this.fx = this.fx.filter((f) => {
       f.t += dt;
       if (f.t >= f.life) { this.scene.remove(f.s); return false; }
-      f.s.position.y += dt * 40; f.s.material.opacity = 1 - f.t / f.life;
+      if (f.t < 0) { f.s.visible = false; return true; }
+      f.s.visible = true;
+      f.s.position.y += dt * (f.rise || 40); f.s.material.opacity = 1 - f.t / f.life;
       return true;
     });
 

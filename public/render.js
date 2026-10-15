@@ -43,7 +43,8 @@
   const POND_PATH = blobPath(F.PONDS);
   const GRASS_TUFTS = pointsIn(F.GRASS, 70, inBlobs(F.GRASS));
   const POND_MOTTLES = pointsIn(F.PONDS, 40, inBlobs(F.PONDS));
-  const DECOR = [[362, 200], [426, 164], [160, 462], [1104, 620], [560, 984], [1300, 420], [1690, 300], [96, 1010], [1260, 1240], [820, 300]];
+  const DECOR = [[362, 200], [426, 164], [160, 462], [1104, 620], [560, 984], [1300, 420], [1690, 300], [96, 1010], [1260, 1240], [820, 300]]
+    .map(([x, y]) => [x + (F.SHIFT || 0), y]);
 
   let snowTile = null;
   function groundPattern(ctx) {
@@ -112,6 +113,50 @@
   });
   COVERS.sort((a, b) => a.y - b.y);
 
+  // ---------- lodges (seen from above) ----------
+  let plankTile = null;
+  function plankPattern(ctx) {
+    if (!plankTile) {
+      plankTile = document.createElement('canvas'); plankTile.width = 40; plankTile.height = 40;
+      const t = plankTile.getContext('2d');
+      t.fillStyle = '#b98a57'; t.fillRect(0, 0, 40, 40);
+      t.strokeStyle = 'rgba(107,68,40,0.45)'; t.lineWidth = 1.5;
+      for (let y = 0; y <= 40; y += 10) { t.beginPath(); t.moveTo(0, y); t.lineTo(40, y); t.stroke(); }
+      t.beginPath(); t.moveTo(14, 0); t.lineTo(14, 10); t.moveTo(30, 10); t.lineTo(30, 20); t.moveTo(8, 20); t.lineTo(8, 30); t.moveTo(24, 30); t.lineTo(24, 40); t.stroke();
+    }
+    return ctx.createPattern(plankTile, 'repeat');
+  }
+  function drawLodges(ctx) {
+    for (const L of F.LODGES || []) {
+      const slab = L.boxes.find((b) => b[6] === 'slab');
+      const [x, y, w, h] = slab;
+      ctx.fillStyle = 'rgba(70,100,140,0.22)'; roundRect(ctx, x + 8, y + 10, w, h, 6); ctx.fill();
+      ctx.fillStyle = plankPattern(ctx); ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.strokeRect(x, y, w, h);
+      for (const b of L.boxes) {
+        if (b[6] !== 'parapet') continue;
+        ctx.fillStyle = '#8f5d36'; ctx.fillRect(b[0], b[1], b[2], b[3]);
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(b[0] + 1, b[1] + 1, b[2] - 2, Math.min(b[3] - 2, 3));
+        ctx.strokeStyle = INK; ctx.lineWidth = 1.5; ctx.strokeRect(b[0], b[1], b[2], b[3]);
+      }
+      // stairs: steps get lighter as they climb
+      const r = L.ramp;
+      const steps = 12;
+      for (let i = 0; i < steps; i++) {
+        const t0 = i / steps, sx = r.lowX + (r.highX - r.lowX) * t0, sw = (r.highX - r.lowX) / steps;
+        const x0 = Math.min(sx, sx + sw);
+        ctx.fillStyle = i % 2 ? '#a8784a' : '#b98a57';
+        ctx.fillRect(x0, r.y, Math.abs(sw) + 0.5, r.h);
+      }
+      const lo = Math.min(r.highX, r.lowX), hi = Math.max(r.highX, r.lowX);
+      const landing = r.highX < r.lowX ? [r.x, r.highX - r.x] : [r.highX, r.x + r.w - r.highX];
+      ctx.fillStyle = '#b98a57'; ctx.fillRect(landing[0], r.y, landing[1], r.h);
+      ctx.strokeStyle = INK; ctx.lineWidth = 2.5; ctx.strokeRect(r.x, r.y, r.w, r.h);
+      ctx.fillStyle = '#ffffff'; ctx.font = '700 14px "Atkinson Hyperlegible", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('stairs ↑', (lo + hi) / 2, r.y + r.h / 2);
+    }
+  }
+
   // ---------- pickups ----------
   function drawPickup(ctx, k, now) {
     const bob = Math.sin(now / 300 + k[0]) * 3;
@@ -171,21 +216,12 @@
     ctx.beginPath(); ctx.arc(p.x, p.y, R, -0.6, Math.PI * 0.75); ctx.arc(p.x - 4, p.y - 4, R, Math.PI * 0.75, -0.6, true); ctx.fill();
     ctx.strokeStyle = INK; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, Math.PI * 2); ctx.stroke();
-    // face
-    ctx.fillStyle = '#fdf8f2';
-    ctx.beginPath(); ctx.ellipse(p.x + Math.cos(a) * 5, p.y + 4 + Math.sin(a) * 3, R * 0.6, R * 0.5, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.lineWidth = 2; ctx.stroke();
-    const ex = Math.cos(a) * 4, ey = Math.sin(a) * 3;
-    ctx.fillStyle = INK;
-    ctx.beginPath(); ctx.arc(p.x - 6 + ex, p.y + 1 + ey, 3, 0, Math.PI * 2); ctx.arc(p.x + 6 + ex, p.y + 1 + ey, 3, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#f2a0a8';
-    ctx.beginPath(); ctx.arc(p.x - 10 + ex, p.y + 8 + ey, 2.4, 0, Math.PI * 2); ctx.arc(p.x + 10 + ex, p.y + 8 + ey, 2.4, 0, Math.PI * 2); ctx.fill();
-    // beanie
-    ctx.fillStyle = hat; ctx.strokeStyle = INK; ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.arc(p.x, p.y - 4, R - 1, Math.PI * 1.08, Math.PI * 1.92); ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#ffffff';
-    roundRect(ctx, p.x - R * 0.86, p.y - 10, R * 1.72, 6, 3); ctx.fill(); ctx.stroke();
-    ctx.beginPath(); ctx.arc(p.x, p.y - R - 4, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    // face, moustache and hat
+    window.FFAvatar.draw(ctx, p.x, p.y, R, { colour, hat: (info.look || {}).hat, stache: (info.look || {}).stache, hatColour: hat }, 'normal', 0, { noBody: true });
+    // red flash when hit, blue ring while shielded
+    const hitAge = now - (p.hitAt || -1e9);
+    if (hitAge < 400) { ctx.fillStyle = `rgba(255,40,40,${0.55 * (1 - hitAge / 400)})`; ctx.beginPath(); ctx.arc(p.x, p.y, R + 3, 0, Math.PI * 2); ctx.fill(); }
+    if (p.shield > 0) { ctx.strokeStyle = 'rgba(90,168,255,0.85)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p.x, p.y, R + 7, 0, Math.PI * 2); ctx.stroke(); }
     ctx.globalAlpha = 1;
   }
 
@@ -222,6 +258,7 @@
     ctx.save(); ctx.beginPath(); ctx.rect(0, -10, F.MAP.width, F.MAP.height + 20); ctx.clip();
     drawFenceTop(ctx);
     ctx.restore();
+    drawLodges(ctx);
     for (const k of world.pickups) drawPickup(ctx, k, now);
 
     // y-sorted solids and players

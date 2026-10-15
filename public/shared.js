@@ -1,6 +1,8 @@
 // Shared map + physics, used by both the server (Node) and the browser.
 (function (root) {
-  const MAP = { width: 1800, height: 1300 };
+  // The arena is 1800 wide; a 300-wide strip on each side holds a two-storey lodge.
+  const SHIFT = 300;
+  const MAP = { width: 1800 + SHIFT * 2, height: 1300 };
   const BORDER = 26; // fence thickness around the arena
   const PLAYER_RADIUS = 22;
   const PLAYER_SPEED = 240;  // walking, units per second
@@ -18,6 +20,7 @@
   const REVEAL_DIST = 120;      // enemies this close can see you even in cover
   const REVEAL_THROW_MS = 1200; // throwing gives away your hiding spot
   const REVEAL_HIT_MS = 1000;   // so does getting hit
+  const STEP_UP = 30;           // how high a step you can walk up (stairs)
 
   // What each kind of map object does. Positions are relative to the object's x, y.
   //   rects/circles: solid (block players and snowballs)
@@ -90,6 +93,59 @@
     [1126, 1000, 200, 180, 34], [1180, 936, 150, 120, 30], [1260, 1020, 116, 120, 30], [1150, 1100, 120, 86, 26],
   ];
 
+  // Move the arena layout right to make room for the lodges.
+  for (const o of OBJECTS) o.x += SHIFT;
+  for (const g of GRASS) g[0] += SHIFT;
+  for (const p of PONDS) p[0] += SHIFT;
+
+  // ---------- lodges: two storeys, a roof deck and an outside staircase ----------
+  // Boxes are solid blocks with a bottom and top height. Slabs are floors you can stand on.
+  const FLOOR = 96, DECK = 104, PARAPET = 128;
+  const LEFT_LODGE = {
+    boxes: [
+      // ground-floor walls (with a door and windows facing the arena)
+      [50, 470, 12, 360, 0, FLOOR, 'wall'],
+      [50, 470, 70, 12, 0, FLOOR, 'wall'], [120, 470, 60, 12, 0, 34, 'wall'], [120, 470, 60, 12, 70, FLOOR, 'wall'], [180, 470, 70, 12, 0, FLOOR, 'wall'],
+      [50, 818, 200, 12, 0, FLOOR, 'wall'],
+      [238, 482, 12, 28, 0, FLOOR, 'wall'],
+      [238, 510, 12, 50, 0, 34, 'wall'], [238, 510, 12, 50, 70, FLOOR, 'wall'],
+      [238, 560, 12, 50, 0, FLOOR, 'wall'],
+      [238, 610, 12, 80, 80, FLOOR, 'wall'],
+      [238, 690, 12, 50, 0, FLOOR, 'wall'],
+      [238, 740, 12, 50, 0, 34, 'wall'], [238, 740, 12, 50, 70, FLOOR, 'wall'],
+      [238, 790, 12, 28, 0, FLOOR, 'wall'],
+      // roof deck
+      [50, 470, 200, 360, FLOOR, DECK, 'slab'],
+      // parapet round the deck: a gap at the top of the stairs and a jump-off gap facing the arena
+      [50, 470, 200, 8, DECK, PARAPET, 'parapet'], [50, 470, 8, 360, DECK, PARAPET, 'parapet'],
+      [242, 470, 8, 130, DECK, PARAPET, 'parapet'], [242, 700, 8, 130, DECK, PARAPET, 'parapet'],
+      [130, 822, 120, 8, DECK, PARAPET, 'parapet'],
+    ],
+    // stairs along the outside of the south wall: ground level at x 250, deck level from x 110 to 62
+    ramp: { x: 62, y: 834, w: 188, h: 48, lowX: 250, highX: 110, top: DECK },
+    crates: [[100, 530], [100, 770]],
+    pickup: { x: 150, y: 650, z: DECK },
+  };
+  const mirrorBox = ([x, y, w, h, b, t, k]) => [MAP.width - x - w, y, w, h, b, t, k];
+  const RIGHT_LODGE = {
+    boxes: LEFT_LODGE.boxes.map(mirrorBox),
+    ramp: { ...LEFT_LODGE.ramp, x: MAP.width - LEFT_LODGE.ramp.x - LEFT_LODGE.ramp.w, lowX: MAP.width - LEFT_LODGE.ramp.lowX, highX: MAP.width - LEFT_LODGE.ramp.highX },
+    crates: LEFT_LODGE.crates.map(([x, y]) => [MAP.width - x, y]),
+    pickup: { ...LEFT_LODGE.pickup, x: MAP.width - LEFT_LODGE.pickup.x },
+  };
+  const LODGES = [LEFT_LODGE, RIGHT_LODGE];
+  for (const L of LODGES) for (const [x, y] of L.crates) OBJECTS.push({ k: 'crate', x, y });
+  // a little cover in the lodge strips
+  OBJECTS.push({ k: 'pine', x: 160, y: 250 }, { k: 'mound', x: 160, y: 1060 }, { k: 'snowman', x: 230, y: 960 },
+    { k: 'pine', x: MAP.width - 160, y: 250 }, { k: 'mound', x: MAP.width - 160, y: 1060 }, { k: 'snowman', x: MAP.width - 230, y: 960 });
+  const RAMPS = LODGES.map((L) => L.ramp);
+  const SLABS = [];
+
+  function rampHeight(r, x) {
+    const t = (x - r.lowX) / (r.highX - r.lowX);
+    return clamp(t, 0, 1) * r.top;
+  }
+
   // Build collision + cover lists from the objects and the fence.
   const WALL = 1e6;
   const RECTS = [
@@ -98,6 +154,11 @@
   ];
   const CIRCLES = [];
   const COVERS = [];
+  for (const L of LODGES) for (const [x, y, w, h, bottom, top, kind] of L.boxes) {
+    const b = { x, y, w, h, bottom, top, kind };
+    RECTS.push(b);
+    if (kind === 'slab') SLABS.push(b);
+  }
   OBJECTS.forEach((o, i) => {
     const def = KINDS[o.k];
     for (const [dx, dy, w, h] of def.rects || []) RECTS.push({ x: o.x + dx, y: o.y + dy, w, h, top: def.top });
@@ -119,6 +180,11 @@
     { x: 1140, y: 400 }, { x: 860, y: 640 }, { x: 560, y: 880 }, { x: 1180, y: 840 },
     { x: 1460, y: 900 }, { x: 1010, y: 1080 }, { x: 640, y: 330 },
   ];
+  for (const list of [SPAWNS.any, SPAWNS.blue, SPAWNS.red, PICKUP_SPOTS]) for (const p of list) p.x += SHIFT;
+  SPAWNS.any.push({ x: 150, y: 150 }, { x: 150, y: 1180 }, { x: MAP.width - 150, y: 150 }, { x: MAP.width - 150, y: 1180 });
+  SPAWNS.blue.push({ x: 150, y: 150 }, { x: 150, y: 1180 });
+  SPAWNS.red.push({ x: MAP.width - 150, y: 150 }, { x: MAP.width - 150, y: 1180 });
+  for (const L of LODGES) PICKUP_SPOTS.push({ ...L.pickup });
 
   const PICKUP_TYPES = {
     shield: { label: 'Shield Can', radius: 18 },
@@ -128,12 +194,58 @@
 
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 
+  const inRect = (x, y, o) => x >= o.x && x <= o.x + o.w && y >= o.y && y <= o.y + o.h;
+
+  // The floor under a player at (x, y) whose feet are at z: the ground, a roof deck or the
+  // stairs, whichever is highest without being more than a step above their feet.
+  function groundAt(x, y, z = 0) {
+    let g = 0;
+    for (const s of SLABS) if (inRect(x, y, s) && s.top <= z + STEP_UP && s.top > g) g = s.top;
+    for (const r of RAMPS) if (inRect(x, y, r)) { const h = rampHeight(r, x); if (h <= z + STEP_UP && h > g) g = h; }
+    return g;
+  }
+  // The highest floor at (x, y), used by the server to sanity-check heights.
+  function highestFloorAt(x, y) {
+    let g = 0;
+    for (const s of SLABS) if (inRect(x, y, s)) g = Math.max(g, s.top);
+    for (const r of RAMPS) if (inRect(x, y, r)) g = Math.max(g, rampHeight(r, x));
+    return g;
+  }
+  // The underside of a floor above a player's head (or Infinity), so jumping indoors bumps the ceiling.
+  function ceilingAt(x, y, z) {
+    let c = Infinity;
+    for (const s of SLABS) if (inRect(x, y, s) && s.bottom >= z + PLAYER_HEIGHT - 2 && s.bottom < c) c = s.bottom;
+    return c;
+  }
+
+  // Vertical movement for one frame: stand on floors, walk up and down stairs, jump, fall,
+  // and bump your head on ceilings. `p` has x, y, z, vz and grounded; call after moving x and y.
+  function settle(p, dt, wantJump) {
+    const ground = groundAt(p.x, p.y, p.z);
+    const stickDown = p.grounded && p.vz <= 0 && p.z - ground <= STEP_UP; // stay on the stairs going down
+    if ((p.z <= ground + 0.5 || stickDown) && p.vz <= 0) {
+      p.z = ground; p.vz = 0; p.grounded = true;
+      if (wantJump) { p.vz = JUMP_SPEED; p.grounded = false; }
+    } else p.grounded = false;
+    if (!p.grounded) {
+      const ceiling = ceilingAt(p.x, p.y, p.z);
+      p.vz -= GRAVITY * dt;
+      p.z += p.vz * dt;
+      if (p.z + PLAYER_HEIGHT > ceiling) { p.z = ceiling - PLAYER_HEIGHT; p.vz = Math.min(0, p.vz); }
+      const g = groundAt(p.x, p.y, Math.max(p.z, ground));
+      if (p.z <= g) { p.z = g; p.vz = 0; p.grounded = true; }
+    }
+    return p;
+  }
+
   // Push a circle (x, y, r) out of every obstacle and keep it inside the map.
-  // z is how high the player's feet are: anything lower than that is jumped over.
+  // z is how high the player's feet are: anything lower than that is jumped over, and
+  // anything entirely above their head (a ceiling) is walked under.
   function resolveCollisions(x, y, r, z = 0) {
     for (let pass = 0; pass < 3; pass++) {
       for (const o of RECTS) {
-        if (o.top <= z) continue;
+        if (o.top <= z + 0.5) continue;
+        if ((o.bottom || 0) >= z + PLAYER_HEIGHT) continue;
         const cx = clamp(x, o.x, o.x + o.w);
         const cy = clamp(y, o.y, o.y + o.h);
         const dx = x - cx, dy = y - cy;
@@ -162,16 +274,34 @@
           y = c.y + (dy / d) * min;
         }
       }
+      for (const o of RAMPS) {
+        // the staircase is a solid block except where it's no more than a step above your feet
+        const cx = clamp(x, o.x, o.x + o.w), cy = clamp(y, o.y, o.y + o.h);
+        if (rampHeight(o, cx) <= z + STEP_UP) continue;
+        const dx = x - cx, dy = y - cy, d2 = dx * dx + dy * dy;
+        if (d2 >= r * r) continue;
+        if (d2 === 0) {
+          const left = x - o.x, right = o.x + o.w - x, top = y - o.y, bottom = o.y + o.h - y;
+          const m = Math.min(left, right, top, bottom);
+          if (m === left) x = o.x - r; else if (m === right) x = o.x + o.w + r;
+          else if (m === top) y = o.y - r; else y = o.y + o.h + r;
+        } else { const d = Math.sqrt(d2); x = cx + (dx / d) * r; y = cy + (dy / d) * r; }
+      }
       x = clamp(x, r, MAP.width - r);
       y = clamp(y, r, MAP.height - r);
     }
     return { x, y };
   }
 
-  // True if a small circle overlaps any solid obstacle or the map edge.
+  // True if a small circle at ground level overlaps any solid obstacle or the map edge.
   function blocked(x, y, r) {
     if (x < r || y < r || x > MAP.width - r || y > MAP.height - r) return true;
+    for (const o of RAMPS) {
+      const cx = clamp(x, o.x, o.x + o.w), cy = clamp(y, o.y, o.y + o.h);
+      if ((x - cx) ** 2 + (y - cy) ** 2 < r * r) return true;
+    }
     for (const o of RECTS) {
+      if ((o.bottom || 0) >= PLAYER_HEIGHT) continue;
       const cx = clamp(x, o.x, o.x + o.w), cy = clamp(y, o.y, o.y + o.h);
       const dx = x - cx, dy = y - cy;
       if (dx * dx + dy * dy < r * r) return true;
@@ -188,10 +318,11 @@
     if (z <= 0) return true;
     if (x < BORDER || y < BORDER || x > MAP.width - BORDER || y > MAP.height - BORDER) return true;
     for (const o of RECTS) {
-      if (z - r >= o.top) continue;
+      if (z - r >= o.top || z + r <= (o.bottom || 0)) continue;
       const cx = clamp(x, o.x, o.x + o.w), cy = clamp(y, o.y, o.y + o.h);
       if ((x - cx) ** 2 + (y - cy) ** 2 < r * r) return true;
     }
+    for (const o of RAMPS) if (inRect(x, y, o) && z - r < rampHeight(o, x)) return true;
     for (const c of CIRCLES) {
       if (z - r >= c.top) continue;
       const m = r + c.r;
@@ -217,13 +348,31 @@
   }
   function onIce(x, y) { return PONDS.some((p) => inRoundRect(x, y, p)); }
 
+  // Character customisation
+  const HATS = [
+    { id: 'beanie', label: 'Beanie' }, { id: 'tophat', label: 'Top hat' }, { id: 'cowboy', label: 'Cowboy hat' },
+    { id: 'crown', label: 'Crown' }, { id: 'viking', label: 'Viking helmet' }, { id: 'earmuffs', label: 'Earmuffs' },
+    { id: 'propeller', label: 'Propeller cap' }, { id: 'none', label: 'No hat' },
+  ];
+  const STACHES = [
+    { id: 'none', label: 'None' }, { id: 'classic', label: 'Classic' }, { id: 'handlebar', label: 'Handlebar' },
+    { id: 'walrus', label: 'Walrus' }, { id: 'pencil', label: 'Pencil' }, { id: 'curly', label: 'Curly' },
+  ];
+  function cleanLook(l = {}) {
+    return {
+      hat: HATS.some((h) => h.id === l.hat) ? l.hat : 'beanie',
+      stache: STACHES.some((m) => m.id === l.stache) ? l.stache : 'none',
+    };
+  }
+
   const PLAYER_COLOURS = ['#e85d75', '#f29e4c', '#f1c453', '#7ac74f', '#2ec4b6', '#3a86ff', '#8e6cf0', '#ff70a6', '#6d9dc5', '#a0522d'];
   const TEAM_COLOURS = { blue: '#2f6fe4', red: '#e2453c' };
 
   const api = {
-    MAP, BORDER, PLAYER_RADIUS, PLAYER_SPEED, RUN_SPEED, PLAYER_HEIGHT, EYE_HEIGHT, JUMP_SPEED, GRAVITY, JUMP_MAX,
+    MAP, SHIFT, BORDER, STEP_UP, LODGES, RAMPS, SLABS, rampHeight, groundAt, highestFloorAt, ceilingAt, settle, PLAYER_RADIUS, PLAYER_SPEED, RUN_SPEED, PLAYER_HEIGHT, EYE_HEIGHT, JUMP_SPEED, GRAVITY, JUMP_MAX,
     MAX_HP, MAX_SHIELD, SNOWBALL, RESPAWN_MS, INVULN_MS,
     REVEAL_DIST, REVEAL_THROW_MS, REVEAL_HIT_MS,
+    HATS, STACHES, cleanLook,
     KINDS, OBJECTS, GRASS, PONDS, RECTS, CIRCLES, COVERS, SPAWNS, PICKUP_SPOTS, PICKUP_TYPES, PLAYER_COLOURS, TEAM_COLOURS,
     resolveCollisions, blocked, blocked3D, coverAt, onIce, clamp,
   };

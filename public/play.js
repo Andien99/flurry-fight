@@ -51,16 +51,67 @@ import { World3D } from './world3d.js';
     requestAnimationFrame(frame);
   }
 
-  // ---------- joining ----------
-  const swatches = $('swatches');
-  F.PLAYER_COLOURS.forEach((col) => {
+  // ---------- joining and character customisation ----------
+  const AV = window.FFAvatar;
+  const LOOK_KEY = 'flurry-look';
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(LOOK_KEY) || '{}') || {}; } catch (_) { /* first visit */ }
+  if (F.PLAYER_COLOURS.includes(saved.colour)) S.colour = saved.colour;
+  S.look = F.cleanLook(saved);
+  const saveLook = () => { try { localStorage.setItem(LOOK_KEY, JSON.stringify({ colour: S.colour, ...S.look, name: $('name').value.trim() })); } catch (_) { /* private mode */ } };
+  if (saved.name) $('name').value = saved.name;
+
+  function optionButton(label, draw, pressed, onPick) {
     const b = document.createElement('button');
-    b.type = 'button'; b.className = 'swatch'; b.style.background = col;
-    b.setAttribute('aria-label', 'Colour ' + col);
-    b.setAttribute('aria-pressed', String(col === S.colour));
-    b.onclick = () => { S.colour = col; [...swatches.children].forEach((x) => x.setAttribute('aria-pressed', String(x === b))); };
-    swatches.appendChild(b);
-  });
+    b.type = 'button'; b.className = 'look-opt'; b.setAttribute('aria-pressed', String(pressed)); b.title = label;
+    const c = document.createElement('canvas'); c.width = c.height = 120; draw(c.getContext('2d'));
+    const span = document.createElement('span'); span.textContent = label;
+    b.append(c, span);
+    b.onclick = () => { [...b.parentNode.children].forEach((x) => x.setAttribute('aria-pressed', String(x === b))); onPick(); saveLook(); };
+    return b;
+  }
+  function buildCustomiser() {
+    const sw = $('swatches'); sw.textContent = '';
+    F.PLAYER_COLOURS.forEach((col) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'swatch'; b.style.background = col;
+      b.setAttribute('aria-label', 'Colour ' + col);
+      b.setAttribute('aria-pressed', String(col === S.colour));
+      b.onclick = () => { S.colour = col; [...sw.children].forEach((x) => x.setAttribute('aria-pressed', String(x === b))); buildCustomiser(); saveLook(); };
+      sw.appendChild(b);
+    });
+    const hats = $('hats'); hats.textContent = '';
+    for (const h of F.HATS) {
+      hats.appendChild(optionButton(h.label, (g) => AV.draw(g, 60, 74, 30, { colour: S.colour, hat: h.id, stache: 'none' }), S.look.hat === h.id, () => { S.look.hat = h.id; }));
+    }
+    const st = $('staches'); st.textContent = '';
+    for (const m of F.STACHES) {
+      st.appendChild(optionButton(m.label, (g) => { g.save(); g.translate(60, 42); g.scale(2.1, 2.1); AV.draw(g, 0, 0, 22, { colour: S.colour, hat: 'none', stache: m.id }, 'normal', 0); g.restore(); }, S.look.stache === m.id, () => { S.look.stache = m.id; }));
+    }
+  }
+  // the preview bobs and blinks a little
+  function previewLoop(now) {
+    if (S.screen !== 's-join' || $('f-name').hidden) { S.previewing = false; return; }
+    const c = $('look-preview'), g = c.getContext('2d');
+    g.clearRect(0, 0, c.width, c.height);
+    const bob = reducedMotion ? 0 : Math.sin(now / 400) * 4;
+    g.fillStyle = 'rgba(0,0,0,0.18)'; g.beginPath(); g.ellipse(140, 250, 70 - bob, 12, 0, 0, Math.PI * 2); g.fill();
+    const expr = Math.floor(now / 1400) % 6 === 5 ? 'happy' : 'normal';
+    AV.draw(g, 140, 165 + bob, 78, { colour: S.colour, ...S.look }, expr, now);
+    requestAnimationFrame(previewLoop);
+  }
+  function showCustomiser() {
+    $('f-code').hidden = true; $('f-name').hidden = false;
+    $('s-join').classList.add('customising');
+    buildCustomiser();
+    if (!S.previewing) { S.previewing = true; requestAnimationFrame(previewLoop); }
+    $('name').focus();
+  }
+  $('look-random').onclick = () => {
+    const pick = (a) => a[Math.floor(Math.random() * a.length)];
+    S.colour = pick(F.PLAYER_COLOURS); S.look = { hat: pick(F.HATS).id, stache: pick(F.STACHES).id };
+    buildCustomiser(); saveLook();
+  };
 
   const urlCode = new URLSearchParams(location.search).get('code');
   if (urlCode) $('code').value = urlCode.replace(/\D/g, '').slice(0, 6);
@@ -74,17 +125,17 @@ import { World3D } from './world3d.js';
     socket.emit('game:check', { code }, (res) => {
       if (!res || !res.ok) { $('code-err').textContent = (res && res.error) || 'Could not reach the game.'; return; }
       S.code = code;
-      $('f-code').hidden = true; $('f-name').hidden = false;
-      $('name').focus();
+      showCustomiser();
     });
   };
-  $('back').onclick = () => { $('f-name').hidden = true; $('f-code').hidden = false; $('code').focus(); };
+  $('back').onclick = () => { $('f-name').hidden = true; $('f-code').hidden = false; $('s-join').classList.remove('customising'); $('code').focus(); };
   $('f-name').onsubmit = (e) => {
     e.preventDefault();
     const name = $('name').value.trim();
     $('name-err').textContent = '';
     if (!name) { $('name-err').textContent = 'Type your name so your teacher knows who you are.'; return; }
-    join({ code: S.code, name, colour: S.colour });
+    saveLook();
+    join({ code: S.code, name, colour: S.colour, look: S.look });
   };
 
   function join(payload) {
@@ -92,7 +143,7 @@ import { World3D } from './world3d.js';
       if (!res || !res.ok) {
         sessionStorage.removeItem(SESSION_KEY);
         show('s-join');
-        $('f-code').hidden = false; $('f-name').hidden = true;
+        $('f-code').hidden = false; $('f-name').hidden = true; $('s-join').classList.remove('customising');
         $('code-err').textContent = (res && res.error) || 'Could not join that game.';
         return;
       }
@@ -119,12 +170,10 @@ import { World3D } from './world3d.js';
   function showWait() {
     show('s-wait');
     $('wait-name').textContent = S.name;
-    const c = $('me-preview'), ctx = c.getContext('2d');
-    ctx.clearRect(0, 0, c.width, c.height);
-    ctx.save(); ctx.translate(60, 75); ctx.scale(1.6, 1.6);
-    R.drawPlayer(ctx, { x: 0, y: 0, angle: Math.PI / 2, hp: 100, shield: 0 }, { colour: S.colour, name: '' }, false, false, 0);
-    ctx.restore();
-    // hide the empty name tag drawn above the preview
+    const c = $('me-preview'), g = c.getContext('2d');
+    g.clearRect(0, 0, c.width, c.height);
+    const info = S.world.roster.get(S.pid) || {};
+    AV.draw(g, 80, 92, 48, { colour: S.colour, ...(info.look || S.look) }, 'happy', 0);
   }
 
   socket.on('roster', (r) => {
@@ -158,7 +207,7 @@ import { World3D } from './world3d.js';
   const canvas = $('view');
   const world3d = new World3D(canvas);
   const worldReady = world3d.init().then(() => { $('loading3d').hidden = true; });
-  if (/[?&]debug\b/.test(location.search)) { window.__flurry3d = world3d; window.__flurryState = S; }
+  if (/[?&]debug\b/.test(location.search)) { window.__flurry3d = world3d; window.__flurryState = S; window.__flurrySocket = socket; }
   const coarse = window.matchMedia('(pointer: coarse)').matches;
   const SENS = 0.0022;
   const TURN_SPEED = 2.4; // arrow keys, radians per second
@@ -172,7 +221,7 @@ import { World3D } from './world3d.js';
   function enterGame() {
     show('s-game');
     resize();
-    S.feed = [];
+    $('log').textContent = '';
     world3d.setViewmodelColour((S.world.roster.get(S.pid) || {}).colour || S.colour);
     if (coarse) $('touch').hidden = false;
     setMode(S.mode || 'question');
@@ -192,9 +241,11 @@ import { World3D } from './world3d.js';
     $('m-t').setAttribute('aria-pressed', String(m === 'throw'));
     $('qpanel').hidden = m !== 'question';
     $('s-game').classList.toggle('qmode', m === 'question');
+    $('m-q').classList.toggle('pulse', false);
     if (m === 'question') {
       if (locked()) document.exitPointerLock();
       if (!S.question && !S.qTimer) loadQuestion(); else if (S.question && S.question.type === 'text' && !coarse) $('qinput').focus();
+      fitQuestionToScreen();
     } else {
       if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
       lockMouse();
@@ -208,19 +259,33 @@ import { World3D } from './world3d.js';
   $('m-q').onclick = () => setMode('question');
   $('m-t').onclick = () => setMode('throw');
   $('aim-btn').onclick = () => { setMode('throw'); lockMouse(); };
+  $('q-close').onclick = () => setMode('throw');
+  // ---------- big map (M) ----------
+  function toggleBigMap(open = $('bigmap').hidden) {
+    $('bigmap').hidden = !open;
+    if (open) { if (locked()) document.exitPointerLock(); drawBigMap(); }
+    else if (S.mode === 'throw') lockMouse();
+  }
+  $('mini-open').onclick = () => toggleBigMap(true);
+  $('bigmap-close').onclick = () => toggleBigMap(false);
+  $('bigmap').addEventListener('click', (e) => { if (e.target === $('bigmap')) toggleBigMap(false); });
 
   const typing = () => document.activeElement && document.activeElement.tagName === 'INPUT';
   const MOVE_KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift', ' '];
   window.addEventListener('keydown', (e) => {
     if (S.screen !== 's-game') return;
     const k = e.key.toLowerCase();
+    if (k === 'escape') {
+      if (!$('bigmap').hidden) { toggleBigMap(false); return; }
+      if (S.mode === 'question') { setMode('throw'); return; }
+    }
     if (typing()) {
-      if (k === 'escape') document.activeElement.blur();
       if (!k.startsWith('arrow')) return; // let them type; arrows still turn and walk
       e.preventDefault();
     }
     if (k === '1') { setMode('question'); return; }
     if (k === '2') { setMode('throw'); return; }
+    if (k === 'm') { toggleBigMap(); return; }
     if (MOVE_KEYS.includes(k)) {
       if (k === ' ' && !S.keys.has(' ')) S.jumpQueued = true;
       S.keys.add(k);
@@ -230,8 +295,14 @@ import { World3D } from './world3d.js';
   window.addEventListener('keyup', (e) => S.keys.delete(e.key.toLowerCase()));
   window.addEventListener('blur', () => { S.keys.clear(); S.mouse.down = false; });
 
+  // Chrome sometimes reports one huge bogus movement right after the mouse is captured,
+  // which would snap the view to the sky, so skip the first moments and any absurd jumps.
+  let lockedAt = 0;
+  document.addEventListener('pointerlockchange', () => { if (locked()) lockedAt = performance.now(); });
   document.addEventListener('mousemove', (e) => {
     if (!locked()) return;
+    if (performance.now() - lockedAt < 150) return;
+    if (Math.abs(e.movementX) > 400 || Math.abs(e.movementY) > 400) return;
     S.me.yaw += e.movementX * SENS;
     S.me.pitch = F.clamp(S.me.pitch - e.movementY * SENS, -1.35, 1.35);
   });
@@ -322,7 +393,7 @@ import { World3D } from './world3d.js';
     if (!mine) return;
     const wasAlive = S.me.alive;
     if (mine.seq !== S.me.seq || (mine.alive && !wasAlive)) {
-      Object.assign(S.me, { x: mine.tx, y: mine.ty, z: 0, vx: 0, vy: 0, vz: 0, seq: mine.seq });
+      Object.assign(S.me, { x: mine.tx, y: mine.ty, z: 0, vx: 0, vy: 0, vz: 0, grounded: true, seq: mine.seq });
       if (!wasAlive || S.me.seq <= 1) S.me.yaw = Math.atan2(F.MAP.height / 2 - mine.ty, F.MAP.width / 2 - mine.tx); // face the middle
     } else if (mine.alive && Math.hypot(mine.tx - S.me.x, mine.ty - S.me.y) > 160) { S.me.x = mine.tx; S.me.y = mine.ty; }
     S.me.alive = mine.alive;
@@ -331,18 +402,39 @@ import { World3D } from './world3d.js';
     S.me.hp = mine.hp; S.me.shield = mine.shield; S.me.kos = mine.kos;
   });
 
-  function pushFeed(text) {
-    S.feed.unshift({ text, at: performance.now() });
-    S.feed = S.feed.slice(0, 4);
-    renderFeed();
+  // ---------- game status chat (left side) ----------
+  const who = (id) => {
+    const info = S.world.roster.get(id) || {};
+    const col = S.world.teams && info.team ? F.TEAM_COLOURS[info.team] : info.colour || '#fff';
+    const me = id === S.pid;
+    return `<b style="color:${col}">${esc(me ? 'You' : info.name || 'Someone')}</b>`;
+  };
+  function addLog(html, kind = '') {
+    const li = document.createElement('li');
+    li.className = 'log-' + kind; li.innerHTML = html;
+    const log = $('log');
+    log.appendChild(li);
+    while (log.children.length > 7) log.firstElementChild.remove();
+    setTimeout(() => li.classList.add('old'), 9000);
+    setTimeout(() => li.remove(), 10500);
   }
-  function renderFeed() {
-    const el = $('feed');
-    el.textContent = '';
-    for (const f of S.feed) { const d = document.createElement('div'); d.textContent = f.text; el.appendChild(d); }
+  // screen-edge hue: red when hit, blue when shielded, green when healed (low health glows red constantly)
+  function edgeFlash(kind) {
+    const el = $('edge').querySelector('.e-' + kind);
+    el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
   }
-  function flashDamage() {
-    const d = $('dmg'); d.classList.remove('on'); void d.offsetWidth; d.classList.add('on');
+  function flashDamage() { edgeFlash('hit'); S.hurtAt = performance.now(); }
+  // little icons that float up from the HUD portrait
+  function portraitFloat(kind) {
+    const box = $('pfloat');
+    for (let i = 0; i < (kind === 'heal' ? 4 : 2); i++) {
+      const d = document.createElement('i');
+      d.className = 'pf-' + kind;
+      d.style.left = (20 + Math.random() * 60) + '%';
+      d.style.animationDelay = (i * 0.12) + 's';
+      box.appendChild(d);
+      setTimeout(() => d.remove(), 1600);
+    }
   }
   function hitMarker(ko) {
     const h = $('hitmark'); h.className = 'hitmark'; void h.offsetWidth; h.className = 'hitmark on' + (ko ? ' ko' : '');
@@ -352,7 +444,7 @@ import { World3D } from './world3d.js';
     world3d.burst(e.x, e.y, 30, 24, 160);
     world3d.floatText('KO!', e.x, e.y, 90);
     const by = e.by ? nameOf(e.by) : 'the snow';
-    pushFeed(`${by} knocked out ${nameOf(e.victim)}`);
+    addLog(e.by ? `${who(e.by)} <span class="verb">knocked out</span> ${who(e.victim)}` : `${who(e.victim)} <span class="verb">was knocked out</span>`, e.by === S.pid ? 'mine' : e.victim === S.pid ? 'bad' : 'ko');
     if (e.victim === S.pid) { S.koBy = e.by ? `by ${by}` : ''; S.deadAt = performance.now(); S.me.alive = false; S.mouse.down = false; }
     if (e.by === S.pid) { toast(`You knocked out ${nameOf(e.victim)}!`); hitMarker(true); }
   });
@@ -360,51 +452,77 @@ import { World3D } from './world3d.js';
   socket.on('hit', (e) => {
     if (e.pid === S.pid) { S.revealUntil = performance.now() + F.REVEAL_HIT_MS; flashDamage(); }
     if (e.by === S.pid) hitMarker(false);
+    if (e.pid !== S.pid) world3d.hitPlayer(e.pid, e.x, e.y, e.z, F.SNOWBALL.damage, e.shield, e.by === S.pid); // you see your own hits on the HUD
     if (e.shield) world3d.burst(e.x, e.y, e.z || 30, 6, 80, 0x5aa8ff, 2.4);
   });
   socket.on('pickup', (e) => {
     const labels = { shield: '+50 shield', cocoa: '+50 health', snow: '+5 snowballs' };
-    world3d.floatText(labels[e.type], e.x, e.y, 60, '#ffffff');
-    if (e.pid === S.pid) toast(`${F.PICKUP_TYPES[e.type].label}: ${labels[e.type]}`);
+    const now = performance.now();
+    // effects on other players in the world; your own pickups show on the HUD instead
+    if (e.pid !== S.pid) {
+      if (e.type === 'cocoa') world3d.healEffect(e.pid, e.x, e.y, e.z);
+      else if (e.type === 'shield') world3d.shieldEffect(e.pid, e.x, e.y, e.z);
+      else world3d.floatText(labels[e.type], e.x, e.y, (e.z || 0) + 60, '#ffffff', 1, 20);
+    }
+    addLog(`${who(e.pid)} <span class="verb">picked up</span> ${F.PICKUP_TYPES[e.type].label} <span class="gain gain-${e.type}">${labels[e.type]}</span>`, 'pick');
+    if (e.pid === S.pid) {
+      if (e.type === 'cocoa') { S.healAt = now; edgeFlash('heal'); portraitFloat('heal'); }
+      if (e.type === 'shield') { S.shieldAt = now; edgeFlash('shield'); portraitFloat('shield'); }
+    }
   });
 
-  // ---------- minimap ----------
-  let miniBase = null;
-  function buildMinimapBase() {
-    const c = $('minimap');
-    miniBase = document.createElement('canvas'); miniBase.width = c.width; miniBase.height = c.height;
-    const g = miniBase.getContext('2d');
-    const draw = () => {
-      const z = Math.min(c.width / F.MAP.width, c.height / F.MAP.height);
-      R.draw(g, c.width, c.height, { x: F.MAP.width / 2, y: F.MAP.height / 2, zoom: z }, R.newWorld(false), 0);
-    };
-    window.FFSprites.ready.then(draw);
+  // ---------- minimap (top right) and big map (M) ----------
+  let miniBase = null, bigBase = null;
+  function mapBase(w, h) {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const z = Math.min(w / F.MAP.width, h / F.MAP.height);
+    R.draw(c.getContext('2d'), w, h, { x: F.MAP.width / 2, y: F.MAP.height / 2, zoom: z }, R.newWorld(false), 0);
+    return c;
   }
-  function drawMinimap(now) {
-    const c = $('minimap'), g = c.getContext('2d');
-    if (!miniBase) return;
-    g.clearRect(0, 0, c.width, c.height);
-    g.drawImage(miniBase, 0, 0);
-    const z = Math.min(c.width / F.MAP.width, c.height / F.MAP.height);
-    const ox = (c.width - F.MAP.width * z) / 2, oy = (c.height - F.MAP.height * z) / 2;
+  function buildMinimapBase() {
+    window.FFSprites.ready.then(() => {
+      miniBase = mapBase($('minimap').width, $('minimap').height);
+      bigBase = mapBase($('bigmap-canvas').width, $('bigmap-canvas').height);
+    });
+  }
+  function drawMarkers(g, w, h, scale) {
+    const z = Math.min(w / F.MAP.width, h / F.MAP.height);
+    const ox = (w - F.MAP.width * z) / 2, oy = (h - F.MAP.height * z) / 2;
     const P = (x, y) => [ox + x * z, oy + y * z];
-    for (const k of S.world.pickups) { const [x, y] = P(k[2], k[3]); g.fillStyle = '#ffc93c'; g.beginPath(); g.arc(x, y, 3.5, 0, Math.PI * 2); g.fill(); }
+    for (const k of S.world.pickups) {
+      const [x, y] = P(k[2], k[3]);
+      g.fillStyle = k[1] === 'shield' ? '#5aa8ff' : k[1] === 'cocoa' ? '#57d36a' : '#ffffff';
+      g.strokeStyle = '#1b2a4a'; g.lineWidth = 1.5 * scale;
+      g.beginPath(); g.arc(x, y, 3.5 * scale, 0, Math.PI * 2); g.fill(); g.stroke();
+    }
     const me = S.world.roster.get(S.pid) || {};
     if (S.world.teams && me.team) {
       for (const p of S.world.players.values()) {
         const info = S.world.roster.get(p.id) || {};
         if (p.id === S.pid || info.team !== me.team || !p.alive || p.hidden || p.x == null) continue;
-        const [x, y] = P(p.x, p.y); g.fillStyle = F.TEAM_COLOURS[me.team]; g.strokeStyle = '#fff'; g.lineWidth = 1.5;
-        g.beginPath(); g.arc(x, y, 4, 0, Math.PI * 2); g.fill(); g.stroke();
+        const [x, y] = P(p.x, p.y); g.fillStyle = F.TEAM_COLOURS[me.team]; g.strokeStyle = '#fff'; g.lineWidth = 1.5 * scale;
+        g.beginPath(); g.arc(x, y, 4 * scale, 0, Math.PI * 2); g.fill(); g.stroke();
       }
     }
     if (S.me.alive) {
       const [x, y] = P(S.me.x, S.me.y);
-      g.save(); g.translate(x, y); g.rotate(S.me.yaw);
+      g.save(); g.translate(x, y); g.rotate(S.me.yaw); g.scale(scale, scale);
       g.fillStyle = '#e2453c'; g.strokeStyle = '#fff'; g.lineWidth = 1.5;
       g.beginPath(); g.moveTo(8, 0); g.lineTo(-5, -5); g.lineTo(-2, 0); g.lineTo(-5, 5); g.closePath(); g.fill(); g.stroke();
       g.restore();
     }
+  }
+  function drawMinimap() {
+    const c = $('minimap'), g = c.getContext('2d');
+    if (!miniBase) return;
+    g.clearRect(0, 0, c.width, c.height); g.drawImage(miniBase, 0, 0);
+    drawMarkers(g, c.width, c.height, 1);
+  }
+  function drawBigMap() {
+    const c = $('bigmap-canvas'), g = c.getContext('2d');
+    if (!bigBase) return;
+    g.clearRect(0, 0, c.width, c.height); g.drawImage(bigBase, 0, 0);
+    drawMarkers(g, c.width, c.height, 2.2);
   }
 
   // ---------- frame loop ----------
@@ -440,23 +558,22 @@ import { World3D } from './world3d.js';
       const n = len > 1 ? 1 / len : 1;
       const tx = (cos * fwd - sin * side) * n * speed, ty = (sin * fwd + cos * side) * n * speed;
       // snow gives grip, ponds make you slide, and you can't steer much in the air
-      const grip = me.z > 0 ? 3 : F.onIce(me.x, me.y) ? 2.2 : 22;
+      const grip = !me.grounded ? 3 : me.z < 1 && F.onIce(me.x, me.y) ? 2.2 : 22;
       const kk = Math.min(1, grip * dt);
       me.vx += (tx - me.vx) * kk; me.vy += (ty - me.vy) * kk;
-      // jumping
-      if (S.jumpQueued && me.z <= 0) { me.vz = F.JUMP_SPEED; }
-      S.jumpQueued = false;
-      if (me.z > 0 || me.vz > 0) {
-        me.vz -= F.GRAVITY * dt; me.z += me.vz * dt;
-        if (me.z <= 0) { me.z = 0; me.vz = 0; }
-      }
       const sp = Math.hypot(me.vx, me.vy);
       if (sp > 1) {
         const ox = me.x, oy = me.y;
-        const pos = F.resolveCollisions(ox + me.vx * dt, oy + me.vy * dt, F.PLAYER_RADIUS, me.z);
+        // step up onto stairs before checking walls, so the stairs don't count as a wall
+        const stepTo = F.groundAt(ox + me.vx * dt, oy + me.vy * dt, me.z);
+        const zFor = me.grounded && stepTo > me.z ? stepTo : me.z;
+        const pos = F.resolveCollisions(ox + me.vx * dt, oy + me.vy * dt, F.PLAYER_RADIUS, zFor);
         me.x = pos.x; me.y = pos.y;
         if (dt > 0) { me.vx = (pos.x - ox) / dt; me.vy = (pos.y - oy) / dt; }
       } else { me.vx = 0; me.vy = 0; }
+      // floors, stairs, jumping, falling and ceilings
+      F.settle(me, dt, S.jumpQueued);
+      S.jumpQueued = false;
       if (now - S.lastSend > 50) {
         S.lastSend = now;
         socket.volatile.emit('player:pos', { x: Math.round(me.x * 10) / 10, y: Math.round(me.y * 10) / 10, z: Math.round(me.z), a: Math.round(me.yaw * 1000) / 1000, p: Math.round(me.pitch * 1000) / 1000, s: me.seq });
@@ -466,7 +583,7 @@ import { World3D } from './world3d.js';
 
     const w = S.world;
     R.easeOthers(w, dt);
-    const ground = me.z <= 0 && Math.hypot(me.vx, me.vy) > 40;
+    const ground = me.grounded && Math.hypot(me.vx, me.vy) > 40;
     if (ground && !world3d.reducedMotion) bobT += dt * (running ? 13 : 9); else bobT *= 0.9;
     const bob = world3d.reducedMotion ? 0 : Math.sin(bobT) * (running ? 2.6 : 1.6);
     world3d.render(w, { x: me.x, y: me.y, z: me.z, yaw: me.yaw, pitch: me.pitch, bob, fovKick: running ? 7 : 0, alive: me.alive, ammo: me.ammo }, dt, now);
@@ -480,21 +597,45 @@ import { World3D } from './world3d.js';
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   }
 
+  // The HUD portrait's expression: swirly eyes when low, happy after healing, determined with a shield.
+  function expression(now) {
+    if (!S.me.alive) return 'ko';
+    if (now - (S.healAt || -1e9) < 1800) return 'happy';
+    if (now - (S.shieldAt || -1e9) < 1800) return 'strong';
+    if ((S.me.hp ?? 100) <= 30) return 'hurt';
+    if (now - (S.hurtAt || -1e9) < 400) return 'hurt';
+    if ((S.me.shield || 0) > 0) return 'strong'; // stays determined while the shield lasts
+    return 'normal';
+  }
+  function drawPortrait(now) {
+    const c = $('portrait'), g = c.getContext('2d');
+    const info = S.world.roster.get(S.pid) || {};
+    const teams = S.world.teams && info.team;
+    g.clearRect(0, 0, c.width, c.height);
+    const expr = expression(now);
+    const shake = expr === 'hurt' && now - (S.hurtAt || -1e9) < 400 ? Math.sin(now / 25) * 4 : 0;
+    AV.draw(g, 120 + shake, 140, 80, { colour: info.colour || S.colour, ...(info.look || S.look), hatColour: teams ? F.TEAM_COLOURS[info.team] : undefined }, expr, now);
+    $('pcard').dataset.mood = expr;
+  }
+
   function updateHud(now) {
     const w = S.world;
     $('timer').textContent = fmtTime(w.timeLeft - (now - w.timeAt));
     const hp = Math.max(0, S.me.hp ?? 100), sh = Math.max(0, S.me.shield || 0);
-    $('hp-bar').style.width = hp + '%'; $('hp-num').textContent = hp;
-    $('hp-bar').classList.toggle('low', hp <= 25);
-    $('sh-bar').style.width = sh + '%'; $('sh-num').textContent = sh;
+    $('hp-bar').style.width = hp + '%'; $('hp-num').textContent = `${hp}/${F.MAX_HP}`;
+    $('sh-bar').style.width = sh + '%'; $('sh-num').textContent = `${sh}/${F.MAX_SHIELD}`;
     $('st-bar').style.width = S.me.stamina + '%';
     $('st-bar').classList.toggle('tired', !!S.me.tired);
+    $('pcard').classList.toggle('low', hp <= 30 && S.me.alive);
+    $('pcard').classList.toggle('shielded', sh > 0);
+    // low health: the screen edge glows red until you heal up
+    $('edge').classList.toggle('low', hp <= 30 && S.me.alive);
     const ammo = Math.max(0, S.me.ammo);
     $('ammo').textContent = ammo;
     $('ammo-box').classList.toggle('empty', ammo === 0);
-    // out of snowballs: the Answer questions button pulses until you earn more
+    // out of snowballs: the Questions key pulses until you earn more
     $('m-q').classList.toggle('pulse', ammo === 0 && S.me.alive && S.mode === 'throw');
-    if (S.feed.length && now - S.feed[S.feed.length - 1].at > 5000) { S.feed.pop(); renderFeed(); }
+    drawPortrait(now);
 
     $('hidden-chip').hidden = !(S.me.alive && now > S.revealUntil && F.coverAt(S.me.x, S.me.y) >= 0);
     const ko = $('ko');
@@ -507,9 +648,10 @@ import { World3D } from './world3d.js';
     }
     $('crosshair').hidden = !S.me.alive || (S.mode !== 'throw' && !coarse);
     updateAimOverlay();
-    drawMinimap(now);
+    drawMinimap();
+    if (!$('bigmap').hidden) drawBigMap();
 
-    // leaderboard
+    // leaderboard under the minimap
     const board = $('board');
     const ranked = [...w.players.values()].sort((a, b) => b.kos - a.kos);
     const rows = [];
@@ -518,14 +660,14 @@ import { World3D } from './world3d.js';
       const b = w.teamScores.blue, r = w.teamScores.red, tot = Math.max(1, b + r);
       html += `<div class="teambar"><div style="flex:${Math.max(0.15, b / tot)};background:${F.TEAM_COLOURS.blue}">${b}</div><div style="flex:${Math.max(0.15, r / tot)};background:${F.TEAM_COLOURS.red}">${r}</div></div>`;
     }
-    const top = ranked.slice(0, w.teams ? 3 : 5);
+    const top = ranked.slice(0, w.teams ? 3 : 4);
     if (!top.some((p) => p.id === S.pid) && mine()) top.push(mine());
     for (const p of top) {
       const info = w.roster.get(p.id) || {};
       const col = w.teams && info.team ? F.TEAM_COLOURS[info.team] : info.colour;
       rows.push(`<li class="${p.id === S.pid ? 'me' : ''}"><span>${ranked.indexOf(p) + 1}</span><span class="dot" style="background:${col}"></span><span class="nm">${esc(info.name || '')}</span><b>${p.kos}</b></li>`);
     }
-    board.innerHTML = html + `<h3>Knockouts</h3><ol>${rows.join('')}</ol>`;
+    board.innerHTML = html + `<ol>${rows.join('')}</ol>`;
   }
   const mine = () => S.world.players.get(S.pid);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -569,9 +711,83 @@ import { World3D } from './world3d.js';
       });
     } else {
       $('qinput').value = '';
-      if (S.mode === 'question' && window.innerWidth > 760) $('qinput').focus();
+      setTouchTyping(false);
+      if (S.mode === 'question' && !coarse) $('qinput').focus();
     }
+    $('keypad').hidden = !(coarse && q.type === 'text');
+    if (coarse && q.type === 'text') setKeypadLetters(q.q);
+    fitQuestionToScreen();
   }
+
+  // ---------- on-screen maths keypad for tablets ----------
+  // The iPad keyboard covers half the screen, so typed answers use this keypad instead.
+  // "abc" switches to the normal keyboard for word answers; the popup then moves above it.
+  const KEYS = [
+    ['7', '8', '9', '(', ')', '⌫'],
+    ['4', '5', '6', '+', '−', '×'],
+    ['1', '2', '3', '/', '^', '='],
+    ['0', '.', 'x', 'y', 'a', 'b'],
+    ['n', 'k', 'm', 'p', 'abc', '✓'],
+  ];
+  function setTouchTyping(native) {
+    const inp = $('qinput');
+    if (!coarse) { inp.readOnly = false; inp.removeAttribute('inputmode'); return; }
+    inp.readOnly = !native;
+    inp.setAttribute('inputmode', native ? 'text' : 'none');
+    $('keypad').classList.toggle('native', native);
+  }
+  // The letter keys show the question's own variables first (e.g. h, t), then common ones.
+  const DEFAULT_LETTERS = ['x', 'y', 'a', 'b', 'n', 'k', 'm', 'p'];
+  function setKeypadLetters(text) {
+    const found = [];
+    const add = (c) => { c = c.toLowerCase(); if (/^[a-z]$/.test(c) && !found.includes(c)) found.push(c); };
+    // letters inside $...$ maths, minus LaTeX command names like \times
+    for (const m of String(text).matchAll(/\$([^$]+)\$/g)) m[1].replace(/\\[a-zA-Z]+/g, ' ').replace(/[a-zA-Z]/g, add);
+    // a lone letter in plain text ("when n = 4"), but not the words "a" or "I"
+    for (const m of String(text).replace(/\$[^$]*\$/g, ' ').matchAll(/(?:^|[^A-Za-z])([b-hj-zB-HJ-Z])(?![A-Za-z])/g)) add(m[1]);
+    const letters = found.concat(DEFAULT_LETTERS.filter((c) => !found.includes(c))).slice(0, 8);
+    document.querySelectorAll('#keypad .kp-var').forEach((b, i) => { b.textContent = letters[i]; b.dataset.k = letters[i]; b.setAttribute('aria-label', letters[i]); });
+  }
+  (function buildKeypad() {
+    const pad = $('keypad');
+    for (const row of KEYS) for (const k of row) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = k; b.className = 'kp' + (k === '✓' ? ' kp-ok' : k === '⌫' ? ' kp-del' : k === 'abc' ? ' kp-abc' : /[a-z]/.test(k) ? ' kp-var' : '');
+      b.setAttribute('aria-label', k === '⌫' ? 'Delete' : k === '✓' ? 'Check answer' : k === 'abc' ? 'Use the keyboard' : k);
+      b.addEventListener('pointerdown', (e) => e.preventDefault()); // don't steal focus
+      b.onclick = () => {
+        const inp = $('qinput');
+        if (k === '⌫') inp.value = inp.value.slice(0, -1);
+        else if (k === '✓') $('qform').requestSubmit();
+        else if (k === 'abc') { setTouchTyping(true); inp.focus(); fitQuestionToScreen(); setTimeout(fitQuestionToScreen, 350); }
+        else inp.value += k === '−' ? '-' : (b.dataset.k || k);
+      };
+      pad.appendChild(b);
+    }
+  })();
+
+  // Keep the popup visible above an on-screen keyboard.
+  const fullHeight = {};
+  function fitQuestionToScreen() {
+    const vv = window.visualViewport, card = $('qcard'), modal = $('qpanel');
+    if (!vv || modal.hidden) return;
+    // iPadOS doesn't always shrink innerHeight for its keyboard, so also compare with the tallest
+    // viewport seen in this orientation, and treat "typing with the real keyboard" as keyboard up.
+    const orient = window.innerWidth > window.innerHeight ? 'land' : 'port';
+    fullHeight[orient] = Math.max(fullHeight[orient] || 0, vv.height);
+    const inp = $('qinput');
+    const keyboardUp = vv.height < window.innerHeight * 0.8 || vv.height < fullHeight[orient] * 0.8 ||
+      (coarse && document.activeElement === inp && !inp.readOnly);
+    modal.classList.toggle('kb', keyboardUp);
+    modal.style.top = vv.offsetTop + 'px';
+    modal.style.height = vv.height + 'px';
+    card.style.maxHeight = (vv.height - 16) + 'px';
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', fitQuestionToScreen);
+    window.visualViewport.addEventListener('scroll', fitQuestionToScreen);
+  }
+  $('qinput').addEventListener('blur', () => { if (coarse) setTimeout(() => { setTouchTyping(false); fitQuestionToScreen(); }, 50); });
 
   $('qform').onsubmit = (e) => {
     e.preventDefault();
@@ -646,7 +862,8 @@ import { World3D } from './world3d.js';
   }
 
   if (window.matchMedia('(pointer: coarse)').matches) {
-    document.querySelector('.qhint').textContent = 'Every correct answer makes snowballs. Tap Throw to switch to throwing. Use the left side of the screen to move and drag on the right to look around. Duck into trees or igloos to hide.';
+    document.querySelector('.qhint').textContent = 'Every correct answer makes snowballs. Tap × to go back to throwing.';
+    document.body.classList.add('touch-device');
   }
   show('s-join');
 })();

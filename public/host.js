@@ -667,6 +667,7 @@
     G.world.particles.push({ kind: 'text', text: 'KO!', x: e.x, y: e.y - 20, colour: '#ffc93c', t0: now, life: 900 });
   });
   socket.on('splat', (e) => R.burst(G.world, e.x, e.y, '#ffffff', 7, 26, 3.5, performance.now()));
+  socket.on('hit', (e) => { const p = G.world.players.get(e.pid); if (p) p.hitAt = performance.now(); });
   socket.on('ended', (res) => showResults(res));
   socket.on('closed', () => { sessionStorage.removeItem(HOST_KEY); step('setup'); });
 

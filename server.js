@@ -123,12 +123,13 @@ function createGame(hostSocket, settings, questions, title) {
   return game;
 }
 
-function makePlayer(game, name, colour) {
+function makePlayer(game, name, colour, look) {
   const pid = 'p' + game.nextId++;
   return {
     pid, token: token(), socketId: null, connected: true,
     name: cleanName(name, game),
     colour: FF.PLAYER_COLOURS.includes(colour) ? colour : FF.PLAYER_COLOURS[Math.floor(Math.random() * FF.PLAYER_COLOURS.length)],
+    look: FF.cleanLook(look),
     team: null,
     x: 0, y: 0, z: 0, angle: 0, pitch: 0, lastPosAt: 0,
     hp: FF.MAX_HP, shield: 0, ammo: 0,
@@ -164,7 +165,7 @@ function spawnPlayer(game, p, now) {
 }
 
 function roster(game) {
-  return [...game.players.values()].map((p) => ({ id: p.pid, name: p.name, colour: p.colour, team: p.team, connected: p.connected }));
+  return [...game.players.values()].map((p) => ({ id: p.pid, name: p.name, colour: p.colour, look: p.look, team: p.team, connected: p.connected }));
 }
 function emitRoster(game) {
   io.to(game.code).emit('roster', { players: roster(game), state: game.state, settings: game.settings, title: game.title });
@@ -252,7 +253,7 @@ function sendSnapshots(game, now) {
   const base = {
     t: game.endsAt - now,
     b: game.snowballs.map((b) => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.vx), Math.round(b.vy), Math.round(b.z), Math.round(b.vz)]),
-    k: game.pickups.map((k) => [k.id, k.type, k.x, k.y]),
+    k: game.pickups.map((k) => [k.id, k.type, k.x, k.y, k.z || 0]),
     ts: game.settings.teams ? game.teamScores : null,
   };
   if (game.hostSocketId) io.to(game.hostSocketId).volatile.emit('state', { ...base, p: rows, hid: list.filter((_, i) => hidden[i]).map((p) => p.pid) });
@@ -315,7 +316,7 @@ function stepGame(game, dt, now) {
       if (free.length) {
         const s = free[Math.floor(Math.random() * free.length)];
         const types = ['shield', 'shield', 'cocoa', 'snow'];
-        game.pickups.push({ id: game.nextId++, type: types[Math.floor(Math.random() * types.length)], x: s.x, y: s.y });
+        game.pickups.push({ id: game.nextId++, type: types[Math.floor(Math.random() * types.length)], x: s.x, y: s.y, z: s.z || 0 });
       }
     }
   }
@@ -324,11 +325,12 @@ function stepGame(game, dt, now) {
       if (!p.alive) continue;
       const r = FF.PLAYER_RADIUS + FF.PICKUP_TYPES[k.type].radius;
       if ((p.x - k.x) ** 2 + (p.y - k.y) ** 2 > r * r) continue;
+      if (Math.abs(p.z - (k.z || 0)) > 45) continue; // on a different floor
       if (k.type === 'shield' && p.shield < FF.MAX_SHIELD) p.shield = Math.min(FF.MAX_SHIELD, p.shield + 50);
       else if (k.type === 'cocoa' && p.hp < FF.MAX_HP) p.hp = Math.min(FF.MAX_HP, p.hp + 50);
       else if (k.type === 'snow' && p.ammo < game.settings.maxAmmo) p.ammo = Math.min(game.settings.maxAmmo, p.ammo + 5);
       else continue;
-      io.to(game.code).emit('pickup', { pid: p.pid, type: k.type, x: k.x, y: k.y });
+      io.to(game.code).emit('pickup', { pid: p.pid, type: k.type, x: k.x, y: k.y, z: k.z || 0, hp: p.hp, shield: p.shield });
       return false;
     }
     return true;
@@ -463,7 +465,7 @@ io.on('connection', (socket) => {
       if (game.state === 'ended') return reply(cb, { ok: false, error: 'That game has finished.' });
       if (game.state === 'playing' && !game.settings.lateJoin) return reply(cb, { ok: false, error: 'This game has already started.' });
       if (game.players.size >= 60) return reply(cb, { ok: false, error: 'This game is full.' });
-      p = makePlayer(game, data.name, data.colour);
+      p = makePlayer(game, data.name, data.colour, data.look);
       game.players.set(p.pid, p);
       if (game.state === 'playing') {
         if (game.settings.teams) { const c = teamCounts(game); p.team = c.blue <= c.red ? 'blue' : 'red'; }
@@ -501,7 +503,7 @@ io.on('connection', (socket) => {
     const maxDist = FF.RUN_SPEED * elapsed * 1.5 + 25;
     if (dist > maxDist) { dx = (dx / dist) * maxDist; dy = (dy / dist) * maxDist; }
     const z = Number(data.z);
-    p.z = Number.isFinite(z) ? FF.clamp(z, 0, FF.JUMP_MAX + 2) : 0;
+    p.z = Number.isFinite(z) ? FF.clamp(z, 0, FF.highestFloorAt(x, y) + FF.JUMP_MAX + 4) : 0;
     const pos = FF.resolveCollisions(p.x + dx, p.y + dy, FF.PLAYER_RADIUS, p.z);
     p.x = pos.x; p.y = pos.y;
     if (Number.isFinite(Number(data.a))) p.angle = Number(data.a);

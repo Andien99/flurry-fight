@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Host · Flurry Fight</title>
+<link rel="stylesheet" href="/vendor/fonts/atkinson/latin-400.css">
+<link rel="stylesheet" href="/vendor/fonts/atkinson/latin-700.css">
+<link rel="stylesheet" href="/vendor/fonts/bricolage/latin-700.css">
+<link rel="stylesheet" href="/vendor/fonts/bricolage/latin-800.css">
+<link rel="stylesheet" href="/vendor/katex/katex.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="host">
+<header class="host-top">
+  <div class="logo">Flurry <span>Fight</span></div>
+  <nav aria-label="Steps">
+    <span data-step="setup" class="on">Set up</span>
+    <span data-step="lobby">Lobby</span>
+    <span data-step="live">Live</span>
+    <span data-step="results">Results</span>
+  </nav>
+</header>
+
+<main>
+  <!-- Set up -->
+  <section id="h-setup">
+    <div class="setup-grid">
+      <aside class="panel sets-panel">
+        <h2>Question sets</h2>
+        <div class="row">
+          <button class="btn-small" id="new-set">New set</button>
+          <button class="btn-small" id="starter-open">Starter sets</button>
+        </div>
+        <div class="set-list" id="sets"></div>
+        <p class="help">Sets are saved in this browser. Use Export to keep a copy or move a set to another computer.</p>
+      </aside>
+
+      <div class="setup-main">
+        <div class="panel" id="editor">
+          <label for="set-title" class="sr-only">Set name</label>
+          <input id="set-title" class="set-title" maxlength="80" placeholder="Name this set">
+          <div class="row set-meta">
+            <span id="set-summary" class="preview"></span>
+            <span class="spacer"></span>
+            <button class="btn-small btn-ghost" id="export-set">Export</button>
+            <button class="btn-small btn-ghost" id="dup-set">Duplicate</button>
+            <button class="btn-small btn-ghost" id="del-set">Delete set</button>
+          </div>
+
+          <h3 class="add-heading">Add questions</h3>
+          <div class="tabs" role="tablist" aria-label="Ways to add questions">
+            <button role="tab" id="tab-write" aria-controls="pane-write" aria-selected="true">Write a question</button>
+            <button role="tab" id="tab-gen" aria-controls="pane-gen" aria-selected="false">Generate from skills</button>
+            <button role="tab" id="tab-upload" aria-controls="pane-upload" aria-selected="false">Upload a file</button>
+            <button role="tab" id="tab-paste" aria-controls="pane-paste" aria-selected="false">Paste a list</button>
+          </div>
+
+          <!-- Write -->
+          <div class="pane" role="tabpanel" id="pane-write" aria-labelledby="tab-write">
+            <div class="field">
+              <label for="c-q">Question</label>
+              <div class="mathbar" role="toolbar" aria-label="Maths symbols">
+                <button type="button" data-ins="frac" title="Fraction"><span class="mb-frac"><i>a</i><i>b</i></span></button>
+                <button type="button" data-ins="pow" title="Power">x²</button>
+                <button type="button" data-ins="sqrt" title="Square root">√x</button>
+                <button type="button" data-ins="×">×</button>
+                <button type="button" data-ins="÷">÷</button>
+                <button type="button" data-ins="−">−</button>
+                <button type="button" data-ins="π">π</button>
+                <button type="button" data-ins="°">°</button>
+                <button type="button" data-ins="≤">≤</button>
+                <button type="button" data-ins="≥">≥</button>
+                <button type="button" data-ins="$" title="Money dollar sign">$</button>
+              </div>
+              <textarea id="c-q" rows="2" placeholder="e.g. Simplify 6a + 4b − 2a + b"></textarea>
+              <div class="live-preview" id="c-q-prev" aria-live="polite"></div>
+            </div>
+
+            <div class="field">
+              <label>How do students answer?</label>
+              <div class="choice" id="c-type">
+                <button type="button" data-v="mc" aria-pressed="true">Pick from options</button>
+                <button type="button" data-v="text" aria-pressed="false">Type the answer</button>
+              </div>
+            </div>
+
+            <div id="c-mc">
+              <div class="field">
+                <label for="c-correct">Correct answer</label>
+                <input id="c-correct" class="correct-input" placeholder="e.g. 4a + 5b">
+              </div>
+              <div class="field">
+                <label>Wrong answers <span class="label-note">at least one, up to five</span></label>
+                <div id="c-wrong" class="wrong-list"></div>
+                <div class="row">
+                  <button type="button" class="btn-ghost btn-small" id="c-add-wrong">Add another wrong answer</button>
+                  <button type="button" class="btn-small" id="c-suggest">Suggest wrong answers</button>
+                </div>
+                <p class="help" id="c-suggest-help">Suggestions work when the correct answer is a number or a short expression. Check them before adding.</p>
+              </div>
+            </div>
+
+            <div id="c-text" hidden>
+              <div class="field">
+                <label for="c-answer">Answer</label>
+                <input id="c-answer" placeholder="e.g. 8k + 6">
+              </div>
+              <div class="field">
+                <label for="c-also">Also accept <span class="label-note">optional, separate with ;</span></label>
+                <input id="c-also" placeholder="e.g. 0.5; 1/2">
+              </div>
+              <div class="field try-box">
+                <label for="c-try">Test it: type what a student might enter</label>
+                <div class="row"><input id="c-try" placeholder="e.g. 6 + 8k"><span id="c-try-result" class="try-result"></span></div>
+                <p class="help">Spacing, capitals, term order (6 + 8k = 8k + 6), letter order (ba = ab) and equal numbers (½ = 0.5) are all accepted automatically. Unsimplified answers are not.</p>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="c-skill">Skill <span class="label-note">optional, shows in the results</span></label>
+              <input id="c-skill" list="skill-list" placeholder="e.g. Collecting like terms">
+              <datalist id="skill-list"></datalist>
+            </div>
+            <div class="row">
+              <button class="btn-sun" id="c-add">Add question</button>
+              <span class="help">or press Ctrl + Enter</span>
+              <span class="ok-msg" id="c-msg" role="status"></span>
+            </div>
+          </div>
+
+          <!-- Generate -->
+          <div class="pane" role="tabpanel" id="pane-gen" aria-labelledby="tab-gen" hidden>
+            <p class="help">Pick the skills you want. Every question gets fresh numbers, and wrong options are built from common mistakes.</p>
+            <div class="row">
+              <div class="field" style="flex:1;min-width:200px">
+                <label for="g-topic">Topic</label>
+                <select id="g-topic"></select>
+              </div>
+              <div class="field">
+                <label for="g-count">Questions per skill</label>
+                <input id="g-count" type="number" min="1" max="20" value="4" style="width:110px">
+              </div>
+            </div>
+            <div class="field">
+              <div class="row"><label style="margin:0">Skills</label><span class="spacer"></span><button class="btn-ghost btn-small" id="g-all">Select all</button><button class="btn-ghost btn-small" id="g-new-examples">New examples</button></div>
+              <div class="skill-list" id="g-skills"></div>
+            </div>
+            <div class="row">
+              <div class="field">
+                <label>Level</label>
+                <div class="choice" id="g-level">
+                  <button type="button" data-v="1" aria-pressed="true">Core</button>
+                  <button type="button" data-v="2" aria-pressed="false">Stretch</button>
+                </div>
+              </div>
+              <div class="field">
+                <label>Answer style</label>
+                <div class="choice" id="g-style">
+                  <button type="button" data-v="mix" aria-pressed="true">Mix</button>
+                  <button type="button" data-v="mc" aria-pressed="false">Options</button>
+                  <button type="button" data-v="text" aria-pressed="false">Typed</button>
+                </div>
+              </div>
+            </div>
+            <div class="row"><button class="btn-sun" id="g-add">Add questions</button><span class="ok-msg" id="g-msg" role="status"></span></div>
+          </div>
+
+          <!-- Upload -->
+          <div class="pane" role="tabpanel" id="pane-upload" aria-labelledby="tab-upload" hidden>
+            <label class="dropzone" id="dropzone">
+              <input type="file" id="upload-file" accept=".docx,.pdf,.xlsx,.xls,.ods,.csv,.tsv,.txt,.json">
+              <span class="dz-title">Drop a test or worksheet here, or click to choose a file</span>
+              <span class="help">Word (.docx), PDF, Excel (.xlsx), CSV, text, or a Flurry Fight export (.json)</span>
+            </label>
+            <div class="field">
+              <label>Put the questions in</label>
+              <div class="choice" id="u-target">
+                <button type="button" data-v="new" aria-pressed="true">A new set</button>
+                <button type="button" data-v="this" aria-pressed="false">This set</button>
+              </div>
+            </div>
+            <p class="help">Numbered questions, A–E options and (a) (b) parts are picked up automatically, including Word equations. Tests usually don't include answers, so you'll be shown which questions still need one. Pictures and tables aren't brought across; questions that mention them are flagged so you can check them.</p>
+            <p class="help">Prefer a spreadsheet? <button type="button" class="btn-ghost btn-small inline-link" id="u-template">Download the question template</button>, fill it in with Excel or Google Sheets, then upload it here.</p>
+            <div class="upload-report" id="u-report" role="status" hidden></div>
+          </div>
+
+          <!-- Paste -->
+          <div class="pane" role="tabpanel" id="pane-paste" aria-labelledby="tab-paste" hidden>
+            <p class="help">One question per line. Separate parts with <b>|</b> or a tab, so you can paste straight from a spreadsheet. Put the correct answer first; the game shuffles the options. A line with just a question and one answer becomes a typed-answer question.</p>
+            <pre class="sample">What is 7 × 8? | 56 | 54 | 48 | 64
+Simplify 6/8 | 3/4 | 2/3 | 6/8 | 4/3
+Solve 3x + 5 = 20 | 5</pre>
+            <textarea id="paste-text" rows="6" placeholder="Paste here"></textarea>
+            <div class="row" style="margin-top:12px"><button class="btn-sun" id="paste-add">Add questions</button><span class="ok-msg" id="p-msg" role="status"></span></div>
+          </div>
+        </div>
+
+        <div class="panel" id="list-panel">
+          <div class="row">
+            <h3 style="margin:0" id="list-heading">Questions in this set</h3>
+            <span class="spacer"></span>
+            <div class="choice choice-small" id="list-filter">
+              <button type="button" data-v="all" aria-pressed="true">All</button>
+              <button type="button" data-v="todo" aria-pressed="false" id="filter-todo">Needs attention</button>
+            </div>
+          </div>
+          <div class="q-list" id="q-list"></div>
+        </div>
+
+        <div class="panel">
+          <h2>Game options</h2>
+          <div class="settings-grid">
+            <div>
+              <label for="opt-duration">Length</label>
+              <select id="opt-duration">
+                <option value="120">2 minutes</option><option value="180">3 minutes</option><option value="300" selected>5 minutes</option>
+                <option value="420">7 minutes</option><option value="600">10 minutes</option><option value="900">15 minutes</option>
+              </select>
+            </div>
+            <div>
+              <label>Mode</label>
+              <div class="choice" id="opt-mode">
+                <button type="button" data-v="ffa" aria-pressed="true">Free for all</button>
+                <button type="button" data-v="teams" aria-pressed="false">Two teams</button>
+              </div>
+            </div>
+            <div>
+              <label for="opt-ammo">Snowballs per correct answer</label>
+              <input id="opt-ammo" type="number" min="1" max="10" value="3">
+            </div>
+            <div>
+              <label for="opt-wrong">Pause after a wrong answer</label>
+              <select id="opt-wrong">
+                <option value="0">None</option><option value="1">1 second</option><option value="2" selected>2 seconds</option>
+                <option value="3">3 seconds</option><option value="5">5 seconds</option>
+              </select>
+              <p class="help">Stops students guessing their way to snowballs.</p>
+            </div>
+            <div>
+              <label>Late joining</label>
+              <div class="choice" id="opt-late">
+                <button type="button" data-v="on" aria-pressed="true">Allowed</button>
+                <button type="button" data-v="off" aria-pressed="false">Locked</button>
+              </div>
+            </div>
+            <div>
+              <label>Power-ups</label>
+              <div class="choice" id="opt-pickups">
+                <button type="button" data-v="on" aria-pressed="true">On</button>
+                <button type="button" data-v="off" aria-pressed="false">Off</button>
+              </div>
+              <p class="help">Shield cans, hot cocoa and snow piles appear on the map.</p>
+            </div>
+          </div>
+          <div class="row end" style="margin-top:20px">
+            <p class="err" id="create-err" style="color:var(--mitten)"></p>
+            <span class="spacer"></span>
+            <span class="preview" id="ready-count"></span>
+            <button class="btn-sun" id="create">Create game</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Lobby -->
+  <section id="h-lobby" hidden>
+    <div class="lobby-hero">
+      <div class="url">Go to <b id="join-url"></b> and enter</div>
+      <div class="code" id="lobby-code">000000</div>
+      <div id="qr" style="display:inline-block;background:#fff;padding:10px;border-radius:12px"></div>
+    </div>
+    <div class="panel">
+      <div class="row">
+        <h2 style="margin:0" id="lobby-count">Waiting for players</h2>
+        <span class="spacer"></span>
+        <button class="btn-ghost" id="cancel-game">Cancel game</button>
+        <button class="btn-sun" id="start" disabled>Start game</button>
+      </div>
+      <p class="help">Click × beside a name to remove that player.</p>
+      <div class="lobby-players" id="lobby-players"></div>
+    </div>
+  </section>
+
+  <!-- Live -->
+  <section id="h-live" hidden>
+    <div class="live">
+      <canvas id="spec" width="1800" height="1300"></canvas>
+      <div class="panel" style="margin:0">
+        <div class="row"><div class="big-timer" id="live-timer">5:00</div><span class="spacer"></span><button class="btn-red btn-small" id="end">End game</button></div>
+        <div id="live-teams"></div>
+        <table>
+          <thead><tr><th>Player</th><th class="n">KO</th><th class="n">Correct</th></tr></thead>
+          <tbody id="live-table"></tbody>
+        </table>
+        <p class="help">Join code <b id="live-code"></b></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Results -->
+  <section id="h-results" hidden>
+    <div class="panel">
+      <div class="row">
+        <h2 style="margin:0" id="res-line">Results</h2>
+        <span class="spacer"></span>
+        <button class="btn-small" id="csv">Download results (CSV)</button>
+        <button class="btn-sun btn-small" id="again">New game</button>
+      </div>
+    </div>
+    <div class="panel" id="res-skills-panel" hidden>
+      <h3>Skills, weakest first</h3>
+      <table>
+        <thead><tr><th>Skill</th><th class="n">Answers</th><th>Class accuracy</th></tr></thead>
+        <tbody id="res-skills"></tbody>
+      </table>
+    </div>
+    <div class="panel">
+      <h3>Players</h3>
+      <table>
+        <thead><tr><th>#</th><th>Player</th><th class="n">Knockouts</th><th class="n">Knocked out</th><th class="n">Correct</th><th>Accuracy</th></tr></thead>
+        <tbody id="res-players"></tbody>
+      </table>
+    </div>
+    <div class="panel">
+      <h3>Questions, hardest first</h3>
+      <table>
+        <thead><tr><th>Question</th><th>Skill</th><th class="n">Attempts</th><th>Correct</th></tr></thead>
+        <tbody id="res-questions"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<dialog id="starter">
+  <h2>Starter sets</h2>
+  <p class="help">Add a ready-made set to your list. You can edit your copy however you like.</p>
+  <div id="starter-list" class="starter-list"></div>
+  <div class="row end" style="margin-top:14px"><button class="btn-ghost" id="starter-close">Close</button></div>
+</dialog>
+
+<div class="undo-toast" id="undo" hidden><span id="undo-text"></span><button class="btn-small" id="undo-btn">Undo</button></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/vendor/qrcode/qrcode.js"></script>
+<script src="/vendor/jszip/jszip.min.js"></script>
+<script src="/vendor/xlsx/xlsx.full.min.js"></script>
+<script src="/vendor/katex/katex.min.js"></script>
+<script src="/vendor/katex/contrib/auto-render.min.js"></script>
+<script src="shared.js"></script>
+<script src="answers.js"></script>
+<script src="generators.js"></script>
+<script src="importers.js"></script>
+<script src="presets.js"></script>
+<script src="sprites.js"></script>
+<script src="render.js"></script>
+<script src="host.js"></script>
+</body>
+</html>

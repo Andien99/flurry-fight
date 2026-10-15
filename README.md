@@ -42,7 +42,7 @@ Sets are saved in the teacher's browser (use **Export** to keep a `.json` copy o
 
 There are four ways to add questions:
 
-- **Write a question.** Type the question (maths buttons insert fractions, powers, roots and symbols; a live preview shows exactly what students see). Choose *Pick from options* (type the correct answer, then wrong answers, or click **Suggest wrong answers** to fill them from common mistakes) or *Type the answer* (with a **Test it** box to check what will be marked right). Add an optional skill. Press **Ctrl + Enter** to add it and start the next one.
+- **Write a question.** Type the question as normal. The maths buttons add fractions, powers and roots in a small maths editor with boxes to type into (top number, Tab, bottom number, Enter), and they appear in the question as real maths, just as students will see them. Click any maths to change or remove it; Backspace deletes it. Symbols (×, ÷, π, °, ≤, ≥, $) go straight in. The correct and wrong answer boxes work the same way. Choose *Pick from options* (type the correct answer, then wrong answers, or click **Suggest wrong answers** to fill them from common mistakes) or *Type the answer* (with a **Test it** box to check what will be marked right). Add an optional skill. Press **Ctrl + Enter** to add it and start the next one.
 - **Generate from skills.** Tick skills (Year 7 Algebra or Number), choose how many per skill, Core or Stretch, and options/typed/mix. Every question gets fresh numbers and wrong options built from common mistakes.
 - **Upload a file.** Word (.docx, including Word equations), PDF, Excel (.xlsx), CSV, text or a Flurry Fight export. Numbered questions, A–E options and (a) (b) parts are picked up automatically. Tests usually don't include answers, so those questions are marked *Needs an answer*: click the correct option, or type the answer, right in the list. Questions that mention a table, diagram or picture are flagged for checking. **Download the question template** gives a spreadsheet layout (question, correct answer, wrong answers, skill) to fill in and upload.
 - **Paste a list.** One question per line, parts separated by `|` or a tab (straight from a spreadsheet), correct answer first.
@@ -94,6 +94,7 @@ public/avatar.js   character portraits (hats, moustaches, expressions) used on t
 public/world3d.js  the 3D arena, characters and effects (three.js)
 public/host.html   teacher screens
 public/host.js     teacher client: question editor, lobby, live view, results
+public/mathtext.js maths-friendly question and answer boxes (uses MathLive for the maths editor)
 public/render.js   2D map drawing (teacher's live view, minimap, ground texture)
 public/sprites.js  vector artwork for the arena (trees, igloos, snowmen, crates, ice…)
 public/shared.js   map layout, lodges, collision, jumping, hiding spots and ponds (shared by server and browser)

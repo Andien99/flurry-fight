@@ -19,6 +19,7 @@ app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] })
 // Libraries and fonts are served from this server, so nothing depends on outside CDNs (handy on school networks).
 const mod = (p) => path.join(__dirname, 'node_modules', p);
 app.use('/vendor/katex', express.static(mod('katex/dist'), { maxAge: '7d' }));
+app.use('/vendor/mathlive', express.static(mod('mathlive'), { maxAge: '7d' }));
 app.use('/vendor/qrcode', express.static(mod('qrcode-generator/dist'), { maxAge: '7d' }));
 app.use('/vendor/three', express.static(mod('three/build'), { maxAge: '7d' }));
 app.use('/vendor/three-addons', express.static(mod('three/examples/jsm'), { maxAge: '7d' }));

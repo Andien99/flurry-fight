@@ -74,7 +74,8 @@
                 <button type="button" data-ins="$" title="Money dollar sign">$</button>
               </div>
               <textarea id="c-q" rows="2" placeholder="e.g. Simplify 6a + 4b − 2a + b"></textarea>
-              <div class="live-preview" id="c-q-prev" aria-live="polite"></div>
+              <div class="live-preview" id="c-q-prev" aria-live="polite" hidden></div>
+              <p class="help">Type words as normal. The maths buttons add fractions, powers and roots you can see as you write. Click any maths to change it.</p>
             </div>
 
             <div class="field">
@@ -356,6 +357,13 @@ Solve 3x + 5 = 20 | 5</pre>
 <script src="sprites.js"></script>
 <script src="avatar.js"></script>
 <script src="render.js"></script>
+<script type="module">
+  // maths editor for the question builder (loaded locally)
+  import { MathfieldElement } from '/vendor/mathlive/mathlive.min.mjs';
+  MathfieldElement.fontsDirectory = '/vendor/mathlive/fonts';
+  MathfieldElement.soundsDirectory = null;
+</script>
+<script src="mathtext.js"></script>
 <script src="host.js"></script>
 </body>
 </html>

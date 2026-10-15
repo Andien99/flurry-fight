@@ -1,6 +1,6 @@
 // Host (teacher) client.
 (() => {
-  const F = window.FF, R = window.FFRender, A = window.FFAnswers, GEN = window.FFGen, IMP = window.FFImport;
+  const F = window.FF, R = window.FFRender, A = window.FFAnswers, GEN = window.FFGen, IMP = window.FFImport, MT = window.FFMathText;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const socket = io();
@@ -158,6 +158,7 @@
     const x = document.createElement('button'); x.type = 'button'; x.textContent = '×'; x.setAttribute('aria-label', 'Remove this wrong answer');
     x.onclick = () => { if ($('c-wrong').children.length > 1) row.remove(); else inp.value = ''; };
     row.append(inp, x);
+    MT.enhance(inp, { label: 'Wrong answer' });
     return row;
   }
   const wrongInputs = () => [...$('c-wrong').querySelectorAll('input')];
@@ -170,26 +171,33 @@
 
   ['c-q', 'c-correct', 'c-answer', 'c-also', 'c-try'].forEach((id) => $(id).addEventListener('focus', () => { lastField = $(id); }));
 
-  // Maths buttons: LaTeX in questions and options; plain forms in typed answers (the marker reads both).
+  // The question, correct answer and wrong answers show maths as real fractions/powers/roots.
+  MT.enhance($('c-q'), { label: 'Question' });
+  MT.enhance($('c-correct'), { label: 'Correct answer' });
+  document.querySelector('label[for="c-q"]').addEventListener('click', () => $('c-q').focus());
+  document.querySelector('label[for="c-correct"]').addEventListener('click', () => $('c-correct').focus());
+
+  // Maths buttons: fractions, powers and roots open the maths editor in those boxes;
+  // typed-answer boxes get the plain forms students type (3/4, x^2), which the marker reads.
   const plainField = (el) => ['c-answer', 'c-also', 'c-try'].includes(el.id);
+  const TEMPLATES = { frac: '\\frac{#?}{#?}', pow: '#?^{#?}', sqrt: '\\sqrt{#?}' };
+  const POP_TEX = { '×': '\\times', '÷': '\\div', '−': '-', 'π': '\\pi', '°': '^{\\circ}', '≤': '\\le', '≥': '\\ge', $: '\\$' };
   document.querySelectorAll('.mathbar button').forEach((b) => {
     b.addEventListener('mousedown', (e) => e.preventDefault()); // keep focus in the field
     b.onclick = () => {
       const el = lastField || $('c-q');
       const k = b.dataset.ins;
-      let text, selStart = 0, selLen = 0;
-      if (plainField(el)) {
-        text = { frac: '/', pow: '^2', sqrt: '√', '−': '-', $: '' }[k] ?? k;
-        selStart = text.length;
-      } else if (k === 'frac') { text = '$\\frac{a}{b}$'; selStart = 7; selLen = 1; }
-      else if (k === 'pow') { text = '$x^{2}$'; selStart = 1; selLen = 1; }
-      else if (k === 'sqrt') { text = '$\\sqrt{x}$'; selStart = 7; selLen = 1; }
-      else if (k === '$') { text = '$\\$$'; selStart = text.length; }
-      else { text = k; selStart = text.length; }
-      const s = el.selectionStart ?? el.value.length, e2 = el.selectionEnd ?? s;
-      el.value = el.value.slice(0, s) + text + el.value.slice(e2);
+      if (MT.isOpen()) { MT.insertIntoPop(TEMPLATES[k] || POP_TEX[k] || k); return; }
+      if (el._mt) {
+        if (TEMPLATES[k]) el._mt.openMath(TEMPLATES[k], k);
+        else el._mt.insertText(k);
+        return;
+      }
+      const text = plainField(el) ? ({ frac: '/', pow: '^2', sqrt: '√', '−': '-', $: '' }[k] ?? k) : k;
+      const s0 = el.selectionStart ?? el.value.length, e2 = el.selectionEnd ?? s0;
+      el.value = el.value.slice(0, s0) + text + el.value.slice(e2);
       el.focus();
-      el.setSelectionRange(s + selStart, s + selStart + selLen);
+      el.setSelectionRange(s0 + text.length, s0 + text.length);
       el.dispatchEvent(new Event('input'));
     };
   });

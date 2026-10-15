@@ -570,3 +570,40 @@ td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
   .custom-grid { grid-template-columns: 1fr; }
   .custom-preview canvas { width: 180px; height: 180px; }
 }
+
+/* ---------- friendly maths boxes in the question builder ---------- */
+.mt-edit {
+  font: 400 1rem/1.6 var(--body); color: var(--ink);
+  border: 2px solid var(--frost); border-radius: var(--r-sm);
+  padding: .5em .75em; background: #fff; width: 100%;
+  min-height: 2.75em; cursor: text; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+textarea + .mt-edit { min-height: 4.2em; }
+.mt-edit:focus, .mt-edit.mt-open { border-color: var(--blue); outline: none; }
+.mt-edit:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; }
+.mt-edit.correct-input { border-color: #b9e4c6; background: #f3fbf5; }
+.mt-edit.correct-input:focus { border-color: var(--good, #2e9e5b); }
+.wrong-row .mt-edit { flex: 1; border-color: #f4cdc9; background: #fffafa; }
+.wrong-row .mt-edit:focus { border-color: var(--blue); }
+.mt-chip {
+  display: inline-block; padding: 0 .2em; margin: 0 .05em; border-radius: 6px;
+  background: #eef4fb; box-shadow: inset 0 0 0 1px #d4e2f3; cursor: pointer; user-select: none;
+  vertical-align: middle; line-height: 1.2;
+}
+.mt-chip:hover { background: #ddeafa; box-shadow: inset 0 0 0 1.5px var(--glacier, #7fb4e6); }
+.mt-chip .katex { font-size: 1.1em; }
+.mt-pop {
+  position: absolute; z-index: 60; background: #fff; border-radius: var(--r-md, 14px);
+  box-shadow: 0 10px 30px rgba(27,42,74,.25), 0 0 0 2px var(--blue); padding: 10px; display: grid; gap: 8px;
+}
+.mt-pop[hidden] { display: none; }
+.mt-tools { display: flex; flex-wrap: wrap; gap: 4px; }
+.mt-tools button { box-shadow: none; background: var(--snow); border: 1.5px solid var(--frost); padding: .3em .6em; min-width: 38px; font-size: .95rem; border-radius: 8px; color: var(--ink); }
+.mt-tools button:hover { border-color: var(--glacier); }
+.mt-mf { display: block; width: 100%; font-size: 1.5rem; padding: 6px 10px; border: 2px solid var(--frost); border-radius: var(--r-sm); background: #fff; color: var(--ink); --caret-color: var(--blue); --selection-background-color: #cfe3fb; --placeholder-color: #7f93ad; }
+.mt-mf:focus-within { border-color: var(--blue); }
+.mt-mf::part(menu-toggle) { display: none; }
+.mt-hint { margin: 0; font-size: .85rem; color: var(--muted); }
+.mt-hint kbd { font: 700 .78rem var(--body); background: var(--snow); border: 1px solid var(--frost); border-radius: 4px; padding: 0 .35em; }
+.mt-actions { display: flex; gap: 8px; align-items: center; }
+.mt-actions .mt-del { background: transparent; box-shadow: none; color: #9b2119; border: 1.5px solid #f4cdc9; }

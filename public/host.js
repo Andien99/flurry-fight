@@ -762,13 +762,13 @@
     renderLobby([]);
   }
 
+  // A plain dot, so a projected lobby or live view doesn't announce who has the modified list.
   function paintToggle(b, p) {
     const on = G.mods.has(p.id);
     if (b.getAttribute('aria-pressed') === String(on)) return;
     b.setAttribute('aria-pressed', String(on));
-    b.textContent = on ? 'Modified ✓' : 'Modified';
-    b.title = on ? `${p.name} gets the modified questions. Click to switch back to the main list.` : `Give ${p.name} the modified questions`;
-    b.setAttribute('aria-label', on ? `${p.name} is on the modified list. Switch to the main list` : `Give ${p.name} the modified list`);
+    b.title = 'Switch question list';
+    b.setAttribute('aria-label', `${p.name}: switch question list`);
   }
   function modToggle(p) {
     const b = document.createElement('button');
@@ -782,10 +782,8 @@
     const live = players.filter((p) => p.connected);
     $('lobby-count').textContent = live.length ? `${live.length} player${live.length === 1 ? '' : 's'} ready` : 'Waiting for players';
     $('start').disabled = !live.length;
-    $('lobby-mod-help').hidden = !G.modCount;
-    $('lobby-mod-count').textContent = G.mods.size ? `${G.mods.size} on the modified list` : '';
     for (const p of live) {
-      const pill = document.createElement('span'); pill.className = 'pill' + (G.mods.has(p.id) ? ' is-mod' : '');
+      const pill = document.createElement('span'); pill.className = 'pill';
       const d = document.createElement('span'); d.className = 'dot'; d.style.background = p.colour;
       const x = document.createElement('button'); x.textContent = '×'; x.className = 'kick'; x.setAttribute('aria-label', `Remove ${p.name}`);
       x.onclick = () => socket.emit('host:kick', { id: p.id });
@@ -912,13 +910,13 @@
     $('res-players').innerHTML = ps.map((p, i) => {
       const acc = p.attempted ? Math.round(100 * p.correct / p.attempted) : 0;
       const col = res.teams && p.team ? F.TEAM_COLOURS[p.team] : p.colour;
-      return `<tr><td>${i + 1}</td><td><span class="dot" style="background:${col}"></span> ${esc(p.name)}${p.mod ? ' <span class="tag mod-tag" title="Answered the modified list">Modified</span>' : ''}</td><td class="n">${p.kos}</td><td class="n">${p.deaths}</td><td class="n">${p.correct}/${p.attempted}</td><td><span class="acc" style="width:${acc * 0.8}px"></span>${p.attempted ? acc + '%' : '–'}</td></tr>`;
+      return `<tr><td>${i + 1}</td><td><span class="dot" style="background:${col}"></span> ${esc(p.name)}${p.mod ? ' <span class="alt-dot" title="List B"></span>' : ''}</td><td class="n">${p.kos}</td><td class="n">${p.deaths}</td><td class="n">${p.correct}/${p.attempted}</td><td><span class="acc" style="width:${acc * 0.8}px"></span>${p.attempted ? acc + '%' : '–'}</td></tr>`;
     }).join('');
     const qs = res.questions.slice().sort((a, b) => (a.attempts ? a.correct / a.attempts : 2) - (b.attempts ? b.correct / b.attempts : 2));
     const unreached = qs.filter((q) => !q.attempts).length;
     $('res-questions').innerHTML = qs.filter((q) => q.attempts).map((q) => {
       const acc = q.attempts ? Math.round(100 * q.correct / q.attempts) : null;
-      return `<tr><td>${mathHTML(q.q)}${q.list === 'mod' ? ' <span class="tag mod-tag">Modified</span>' : ''}</td><td>${esc(q.skill || '')}</td><td class="n">${q.attempts}</td><td>${acc == null ? 'Not attempted' : `<span class="acc" style="width:${acc * 0.8}px;background:${acc < 50 ? 'var(--mitten)' : 'var(--good)'}"></span>${acc}%`}</td></tr>`;
+      return `<tr><td>${mathHTML(q.q)}${q.list === 'mod' ? ' <span class="alt-dot" title="List B"></span>' : ''}</td><td>${esc(q.skill || '')}</td><td class="n">${q.attempts}</td><td>${acc == null ? 'Not attempted' : `<span class="acc" style="width:${acc * 0.8}px;background:${acc < 50 ? 'var(--mitten)' : 'var(--good)'}"></span>${acc}%`}</td></tr>`;
     }).join('') + (unreached ? `<tr><td colspan="4" class="help">${unreached} question${unreached === 1 ? '' : 's'} weren’t reached this game. They’re still in the CSV.</td></tr>` : '');
   }
 

@@ -56,9 +56,9 @@ Every set has a **main list** and a **modified list**, shown side by side. The m
 
 - **Drag** a question from one list to the other to move it (or drag within a list to reorder). **Copy to modified →** keeps it in both lists.
 - **Add to: Main list / Modified list** (above the tabs) decides where new questions go: written, generated, pasted or uploaded.
-- In the **lobby**, click **Modified** on a student's name to give them the modified questions. You can switch students on or off **during the game** from the table beside the live map; it takes effect from their next question.
-- Students can't see who is on the modified list. Names you tick are remembered in your browser and ticked again automatically next game (untick to stop).
-- Results tag modified students and modified questions, and the CSV includes which list each student answered.
+- In the **lobby**, click the small dot beside a student's name to give them the modified questions (a filled dot means modified). You can switch students on or off **during the game** with the same dot in the table beside the live map; it takes effect from their next question.
+- The dot has no label, so a projected lobby, live view or results page doesn't reveal who is on the modified list, and students never see it. Dots you set are remembered by name in your browser and set again automatically next game.
+- On the results page a small grey dot marks modified students and modified questions. The CSV says which list each student answered.
 
 **How typed answers are marked.** Spacing, capitals, term order (`6 + 8k` = `8k + 6`), letter order (`ba` = `ab`), equal numbers (`1/2` = `0.5`), and a leading `x =`, a `$` or a unit (`26 cm`) are all accepted. Unsimplified answers (`3k + 5k` for `8k`), unexpanded brackets when the answer is expanded, and `×` or `÷` when the answer has none are marked wrong.
 

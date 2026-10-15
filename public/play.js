@@ -1,4 +1,6 @@
-// Player (student) client.
+// Player (student) client: join screen, 3D first-person game, questions and results.
+import { World3D } from './world3d.js';
+
 (() => {
   const F = window.FF, R = window.FFRender;
   const $ = (id) => document.getElementById(id);
@@ -10,7 +12,8 @@
     code: null, pid: null, token: null, name: '', colour: F.PLAYER_COLOURS[Math.floor(Math.random() * F.PLAYER_COLOURS.length)],
     settings: null, screen: 'join',
     world: R.newWorld(false),
-    me: { x: 0, y: 0, vx: 0, vy: 0, seq: -1, alive: false, ammo: 0, angle: 0 },
+    me: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: 0, stamina: 100, tired: false, seq: -1, alive: false, ammo: 0 },
+    jumpQueued: false, touchRun: false,
     revealUntil: 0,
     mode: 'question', keys: new Set(), mouse: { x: 0, y: 0, down: false },
     lastThrow: 0, lastSend: 0, lastHud: 0, lastOutToast: 0,
@@ -151,14 +154,18 @@
     $('code-err').textContent = msg;
   }
 
-  // ---------- game ----------
+  // ---------- game (3D, first person) ----------
   const canvas = $('view');
-  const ctx = canvas.getContext('2d');
-  let cssW = 0, cssH = 0, dpr = 1;
+  const world3d = new World3D(canvas);
+  const worldReady = world3d.init().then(() => { $('loading3d').hidden = true; });
+  if (/[?&]debug\b/.test(location.search)) { window.__flurry3d = world3d; window.__flurryState = S; }
+  const coarse = window.matchMedia('(pointer: coarse)').matches;
+  const SENS = 0.0022;
+  const TURN_SPEED = 2.4; // arrow keys, radians per second
+  const AIM_LIFT = 0.08;  // throw slightly above the crosshair so the arc lands on it at mid range
+
   function resize() {
-    dpr = Math.min(2, window.devicePixelRatio || 1);
-    cssW = canvas.clientWidth; cssH = canvas.clientHeight;
-    canvas.width = Math.round(cssW * dpr); canvas.height = Math.round(cssH * dpr);
+    world3d.resize(canvas.clientWidth, canvas.clientHeight);
   }
   window.addEventListener('resize', resize);
 
@@ -166,97 +173,124 @@
     show('s-game');
     resize();
     S.feed = [];
+    world3d.setViewmodelColour((S.world.roster.get(S.pid) || {}).colour || S.colour);
+    if (coarse) $('touch').hidden = false;
     setMode(S.mode || 'question');
+    buildMinimapBase();
     if (!S.looping) { S.looping = true; requestAnimationFrame(loop); }
   }
 
+  // ---------- mode switching and the mouse ----------
+  const locked = () => document.pointerLockElement === canvas;
+  function lockMouse() {
+    if (coarse || locked()) return;
+    try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (_) { /* needs a click first */ }
+  }
   function setMode(m) {
     S.mode = m;
     $('m-q').setAttribute('aria-pressed', String(m === 'question'));
     $('m-t').setAttribute('aria-pressed', String(m === 'throw'));
     $('qpanel').hidden = m !== 'question';
     $('s-game').classList.toggle('qmode', m === 'question');
-    if (m === 'question') { if (!S.question && !S.qTimer) loadQuestion(); else if (S.question && S.question.type === 'text') $('qinput').focus(); }
-    else if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    if (m === 'question') {
+      if (locked()) document.exitPointerLock();
+      if (!S.question && !S.qTimer) loadQuestion(); else if (S.question && S.question.type === 'text' && !coarse) $('qinput').focus();
+    } else {
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      lockMouse();
+    }
+    updateAimOverlay();
   }
+  function updateAimOverlay() {
+    $('aim-overlay').hidden = coarse || S.mode !== 'throw' || locked() || !S.me.alive && !!S.deadAt;
+  }
+  document.addEventListener('pointerlockchange', updateAimOverlay);
   $('m-q').onclick = () => setMode('question');
   $('m-t').onclick = () => setMode('throw');
+  $('aim-btn').onclick = () => { setMode('throw'); lockMouse(); };
 
   const typing = () => document.activeElement && document.activeElement.tagName === 'INPUT';
+  const MOVE_KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift', ' '];
   window.addEventListener('keydown', (e) => {
     if (S.screen !== 's-game') return;
     const k = e.key.toLowerCase();
-    const arrow = k.startsWith('arrow');
     if (typing()) {
       if (k === 'escape') document.activeElement.blur();
-      if (!arrow) return;
+      if (!k.startsWith('arrow')) return; // let them type; arrows still turn and walk
       e.preventDefault();
     }
-    if (k === '1') setMode('question');
-    else if (k === '2') setMode('throw');
-    else if (k === ' ' && S.mode === 'throw') { e.preventDefault(); throwBall(); }
-    if (['w', 'a', 's', 'd'].includes(k) || arrow) { S.keys.add(k); if (arrow) e.preventDefault(); }
+    if (k === '1') { setMode('question'); return; }
+    if (k === '2') { setMode('throw'); return; }
+    if (MOVE_KEYS.includes(k)) {
+      if (k === ' ' && !S.keys.has(' ')) S.jumpQueued = true;
+      S.keys.add(k);
+      if (k === ' ' || k.startsWith('arrow')) e.preventDefault();
+    }
   });
   window.addEventListener('keyup', (e) => S.keys.delete(e.key.toLowerCase()));
-  window.addEventListener('blur', () => S.keys.clear());
+  window.addEventListener('blur', () => { S.keys.clear(); S.mouse.down = false; });
 
-  canvas.addEventListener('mousemove', (e) => { S.mouse.x = e.offsetX; S.mouse.y = e.offsetY; });
+  document.addEventListener('mousemove', (e) => {
+    if (!locked()) return;
+    S.me.yaw += e.movementX * SENS;
+    S.me.pitch = F.clamp(S.me.pitch - e.movementY * SENS, -1.35, 1.35);
+  });
   canvas.addEventListener('mousedown', (e) => {
-    if (e.button !== 0) return;
-    S.mouse.x = e.offsetX; S.mouse.y = e.offsetY;
-    if (S.mode !== 'throw') setMode('throw');
+    if (e.button !== 0 || coarse) return;
+    if (S.mode !== 'throw' || !locked()) { setMode('throw'); return; } // first click just grabs the mouse
     S.mouse.down = true;
-    aimAtMouse();
     throwBall();
   });
   window.addEventListener('mouseup', () => { S.mouse.down = false; });
 
-  // Touch: drag on the left side to move, tap elsewhere to throw toward that spot.
-  canvas.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    for (const t of e.changedTouches) {
-      const r = canvas.getBoundingClientRect();
-      const x = t.clientX - r.left, y = t.clientY - r.top;
-      if (!S.stick && x < cssW * 0.45) {
-        S.stick = { id: t.identifier, ox: x, oy: y, dx: 0, dy: 0 };
-        const st = $('stick'); st.hidden = false; st.style.left = (x - 60) + 'px'; st.style.top = (y - 60) + 'px';
-        st.firstElementChild.style.transform = 'translate(0,0)';
-      } else {
-        if (S.mode !== 'throw') setMode('throw');
-        S.mouse.x = x; S.mouse.y = y; aimAtMouse(); throwBall();
+  // ---------- touch: joystick on the left, drag to look on the right, buttons ----------
+  if (coarse) {
+    let look = null;
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      for (const t of e.changedTouches) {
+        const r = canvas.getBoundingClientRect();
+        const x = t.clientX - r.left, y = t.clientY - r.top;
+        if (!S.stick && x < r.width * 0.42) {
+          S.stick = { id: t.identifier, ox: x, oy: y, dx: 0, dy: 0 };
+          const st = $('stick'); st.hidden = false; st.style.left = (x - 60) + 'px'; st.style.top = (y - 60) + 'px';
+          st.firstElementChild.style.transform = 'translate(0,0)';
+        } else if (!look) look = { id: t.identifier, x: t.clientX, y: t.clientY };
       }
-    }
-  }, { passive: false });
-  canvas.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-    for (const t of e.changedTouches) {
-      if (!S.stick || t.identifier !== S.stick.id) continue;
-      const r = canvas.getBoundingClientRect();
-      let dx = t.clientX - r.left - S.stick.ox, dy = t.clientY - r.top - S.stick.oy;
-      const d = Math.hypot(dx, dy), max = 50;
-      if (d > max) { dx = dx / d * max; dy = dy / d * max; }
-      S.stick.dx = dx / max; S.stick.dy = dy / max;
-      $('stick').firstElementChild.style.transform = `translate(${dx}px,${dy}px)`;
-    }
-  }, { passive: false });
-  const endTouch = (e) => { for (const t of e.changedTouches) if (S.stick && t.identifier === S.stick.id) { S.stick = null; $('stick').hidden = true; } };
-  canvas.addEventListener('touchend', endTouch);
-  canvas.addEventListener('touchcancel', endTouch);
-
-  function panelShift() {
-    if (S.mode !== 'question') return { x: 0, y: 0 };
-    const p = $('qpanel');
-    if (window.innerWidth > 760) return { x: p.offsetWidth / 2, y: 0 };
-    return { x: 0, y: p.offsetHeight / 2 };
-  }
-  function zoom() {
-    if (cssW <= 760) return F.clamp(cssW / 560, 0.5, 1);
-    return F.clamp(Math.min(cssW / 1050, cssH / 720), 0.45, 1.5);
-  }
-  function aimAtMouse() {
-    const sh = panelShift();
-    const sx = cssW / 2 - sh.x, sy = cssH / 2 - sh.y;
-    S.me.angle = Math.atan2(S.mouse.y - sy, S.mouse.x - sx);
+    }, { passive: false });
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      for (const t of e.changedTouches) {
+        if (S.stick && t.identifier === S.stick.id) {
+          const r = canvas.getBoundingClientRect();
+          let dx = t.clientX - r.left - S.stick.ox, dy = t.clientY - r.top - S.stick.oy;
+          const d = Math.hypot(dx, dy), max = 50;
+          if (d > max) { dx = dx / d * max; dy = dy / d * max; }
+          S.stick.dx = dx / max; S.stick.dy = dy / max;
+          $('stick').firstElementChild.style.transform = `translate(${dx}px,${dy}px)`;
+        } else if (look && t.identifier === look.id) {
+          S.me.yaw += (t.clientX - look.x) * 0.006;
+          S.me.pitch = F.clamp(S.me.pitch - (t.clientY - look.y) * 0.006, -1.35, 1.35);
+          look.x = t.clientX; look.y = t.clientY;
+        }
+      }
+    }, { passive: false });
+    const endTouch = (e) => {
+      for (const t of e.changedTouches) {
+        if (S.stick && t.identifier === S.stick.id) { S.stick = null; $('stick').hidden = true; }
+        if (look && t.identifier === look.id) look = null;
+      }
+    };
+    canvas.addEventListener('touchend', endTouch);
+    canvas.addEventListener('touchcancel', endTouch);
+    const hold = (id, on, off) => {
+      const b = $(id);
+      b.addEventListener('touchstart', (e) => { e.preventDefault(); on(); }, { passive: false });
+      b.addEventListener('touchend', (e) => { e.preventDefault(); if (off) off(); }, { passive: false });
+    };
+    hold('t-jump', () => { S.jumpQueued = true; });
+    hold('t-throw', () => { if (S.mode !== 'throw') setMode('throw'); S.mouse.down = true; throwBall(); }, () => { S.mouse.down = false; });
+    hold('t-run', () => { S.touchRun = !S.touchRun; $('t-run').setAttribute('aria-pressed', String(S.touchRun)); });
   }
 
   function toast(text, ms = 1600) {
@@ -269,13 +303,14 @@
     const now = performance.now();
     if (!S.me.alive || now - S.lastThrow < F.SNOWBALL.cooldown * 1000 + 10) return;
     if (S.me.ammo <= 0) {
-      if (now - S.lastOutToast > 1800) { toast('Out of snowballs. Press 1 and answer questions to make more.', 2200); S.lastOutToast = now; }
+      if (now - S.lastOutToast > 1500) { S.lastOutToast = now; $('out-hint').hidden = false; clearTimeout(throwBall.h); throwBall.h = setTimeout(() => { $('out-hint').hidden = true; }, 2200); }
       return;
     }
     S.lastThrow = now;
     S.revealUntil = now + F.REVEAL_THROW_MS;
     S.me.ammo--; // optimistic; the next snapshot confirms it
-    socket.emit('player:throw', { a: S.me.angle });
+    world3d.playThrow();
+    socket.emit('player:throw', { a: S.me.yaw, p: S.me.pitch + AIM_LIFT });
   }
 
   // ---------- server updates ----------
@@ -286,10 +321,13 @@
     const mine = S.world.players.get(S.pid);
     if (!mine) return;
     const wasAlive = S.me.alive;
-    if (mine.seq !== S.me.seq || (mine.alive && !wasAlive)) { S.me.x = mine.tx; S.me.y = mine.ty; S.me.vx = 0; S.me.vy = 0; S.me.seq = mine.seq; }
-    else if (mine.alive && Math.hypot(mine.tx - S.me.x, mine.ty - S.me.y) > 160) { S.me.x = mine.tx; S.me.y = mine.ty; }
+    if (mine.seq !== S.me.seq || (mine.alive && !wasAlive)) {
+      Object.assign(S.me, { x: mine.tx, y: mine.ty, z: 0, vx: 0, vy: 0, vz: 0, seq: mine.seq });
+      if (!wasAlive || S.me.seq <= 1) S.me.yaw = Math.atan2(F.MAP.height / 2 - mine.ty, F.MAP.width / 2 - mine.tx); // face the middle
+    } else if (mine.alive && Math.hypot(mine.tx - S.me.x, mine.ty - S.me.y) > 160) { S.me.x = mine.tx; S.me.y = mine.ty; }
     S.me.alive = mine.alive;
     if (now - S.lastThrow > 400) S.me.ammo = mine.ammo;
+    if (mine.hp < (S.me.hp ?? 100) && wasAlive) flashDamage();
     S.me.hp = mine.hp; S.me.shield = mine.shield; S.me.kos = mine.kos;
   });
 
@@ -303,26 +341,194 @@
     el.textContent = '';
     for (const f of S.feed) { const d = document.createElement('div'); d.textContent = f.text; el.appendChild(d); }
   }
+  function flashDamage() {
+    const d = $('dmg'); d.classList.remove('on'); void d.offsetWidth; d.classList.add('on');
+  }
+  function hitMarker(ko) {
+    const h = $('hitmark'); h.className = 'hitmark'; void h.offsetWidth; h.className = 'hitmark on' + (ko ? ' ko' : '');
+  }
 
   socket.on('ko', (e) => {
-    const now = performance.now();
-    R.burst(S.world, e.x, e.y, '#ffffff', 22, 70, 7, now);
-    S.world.particles.push({ kind: 'text', text: 'KO!', x: e.x, y: e.y - 20, colour: '#ffc93c', t0: now, life: 900 });
+    world3d.burst(e.x, e.y, 30, 24, 160);
+    world3d.floatText('KO!', e.x, e.y, 90);
     const by = e.by ? nameOf(e.by) : 'the snow';
     pushFeed(`${by} knocked out ${nameOf(e.victim)}`);
-    if (e.victim === S.pid) { S.koBy = e.by ? `by ${by}` : ''; S.deadAt = now; S.me.alive = false; }
-    if (e.by === S.pid) toast(`You knocked out ${nameOf(e.victim)}!`);
+    if (e.victim === S.pid) { S.koBy = e.by ? `by ${by}` : ''; S.deadAt = performance.now(); S.me.alive = false; S.mouse.down = false; }
+    if (e.by === S.pid) { toast(`You knocked out ${nameOf(e.victim)}!`); hitMarker(true); }
   });
-  socket.on('splat', (e) => R.burst(S.world, e.x, e.y, '#ffffff', 7, 26, 3.5, performance.now()));
+  socket.on('splat', (e) => world3d.burst(e.x, e.y, Math.max(4, e.z || 4), 8, 90, 0xffffff, 2.4));
   socket.on('hit', (e) => {
-    if (e.pid === S.pid) S.revealUntil = performance.now() + F.REVEAL_HIT_MS;
-    if (e.shield) S.world.particles.push({ kind: 'ring', x: e.x, y: e.y, colour: '#5aa8ff', size: 18, t0: performance.now(), life: 300 });
+    if (e.pid === S.pid) { S.revealUntil = performance.now() + F.REVEAL_HIT_MS; flashDamage(); }
+    if (e.by === S.pid) hitMarker(false);
+    if (e.shield) world3d.burst(e.x, e.y, e.z || 30, 6, 80, 0x5aa8ff, 2.4);
   });
   socket.on('pickup', (e) => {
     const labels = { shield: '+50 shield', cocoa: '+50 health', snow: '+5 snowballs' };
-    S.world.particles.push({ kind: 'text', text: labels[e.type], x: e.x, y: e.y - 20, colour: '#ffffff', t0: performance.now(), life: 900 });
+    world3d.floatText(labels[e.type], e.x, e.y, 60, '#ffffff');
     if (e.pid === S.pid) toast(`${F.PICKUP_TYPES[e.type].label}: ${labels[e.type]}`);
   });
+
+  // ---------- minimap ----------
+  let miniBase = null;
+  function buildMinimapBase() {
+    const c = $('minimap');
+    miniBase = document.createElement('canvas'); miniBase.width = c.width; miniBase.height = c.height;
+    const g = miniBase.getContext('2d');
+    const draw = () => {
+      const z = Math.min(c.width / F.MAP.width, c.height / F.MAP.height);
+      R.draw(g, c.width, c.height, { x: F.MAP.width / 2, y: F.MAP.height / 2, zoom: z }, R.newWorld(false), 0);
+    };
+    window.FFSprites.ready.then(draw);
+  }
+  function drawMinimap(now) {
+    const c = $('minimap'), g = c.getContext('2d');
+    if (!miniBase) return;
+    g.clearRect(0, 0, c.width, c.height);
+    g.drawImage(miniBase, 0, 0);
+    const z = Math.min(c.width / F.MAP.width, c.height / F.MAP.height);
+    const ox = (c.width - F.MAP.width * z) / 2, oy = (c.height - F.MAP.height * z) / 2;
+    const P = (x, y) => [ox + x * z, oy + y * z];
+    for (const k of S.world.pickups) { const [x, y] = P(k[2], k[3]); g.fillStyle = '#ffc93c'; g.beginPath(); g.arc(x, y, 3.5, 0, Math.PI * 2); g.fill(); }
+    const me = S.world.roster.get(S.pid) || {};
+    if (S.world.teams && me.team) {
+      for (const p of S.world.players.values()) {
+        const info = S.world.roster.get(p.id) || {};
+        if (p.id === S.pid || info.team !== me.team || !p.alive || p.hidden || p.x == null) continue;
+        const [x, y] = P(p.x, p.y); g.fillStyle = F.TEAM_COLOURS[me.team]; g.strokeStyle = '#fff'; g.lineWidth = 1.5;
+        g.beginPath(); g.arc(x, y, 4, 0, Math.PI * 2); g.fill(); g.stroke();
+      }
+    }
+    if (S.me.alive) {
+      const [x, y] = P(S.me.x, S.me.y);
+      g.save(); g.translate(x, y); g.rotate(S.me.yaw);
+      g.fillStyle = '#e2453c'; g.strokeStyle = '#fff'; g.lineWidth = 1.5;
+      g.beginPath(); g.moveTo(8, 0); g.lineTo(-5, -5); g.lineTo(-2, 0); g.lineTo(-5, 5); g.closePath(); g.fill(); g.stroke();
+      g.restore();
+    }
+  }
+
+  // ---------- frame loop ----------
+  let lastFrame = performance.now(), bobT = 0;
+  function loop(now) {
+    const dt = Math.min(0.05, (now - lastFrame) / 1000);
+    lastFrame = now;
+    if (S.screen !== 's-game') { S.looping = false; return; }
+    const me = S.me, k = S.keys;
+    let moving = false, running = false;
+
+    if (me.alive) {
+      // turning with arrow keys (handy while answering)
+      if (k.has('arrowleft')) me.yaw -= TURN_SPEED * dt;
+      if (k.has('arrowright')) me.yaw += TURN_SPEED * dt;
+      // input relative to where you're looking
+      let fwd = 0, side = 0;
+      if (k.has('w') || k.has('arrowup')) fwd += 1;
+      if (k.has('s') || k.has('arrowdown')) fwd -= 1;
+      if (k.has('d')) side += 1;
+      if (k.has('a')) side -= 1;
+      if (S.stick) { fwd = -S.stick.dy; side = S.stick.dx; }
+      const len = Math.hypot(fwd, side);
+      moving = len > 0.08;
+      const wantRun = (k.has('shift') || S.touchRun) && fwd > 0.2;
+      if (me.stamina <= 0) me.tired = true;
+      if (me.tired && me.stamina > 25) me.tired = false;
+      running = moving && wantRun && !me.tired;
+      if (running) { me.stamina = Math.max(0, me.stamina - 28 * dt); me.restAt = now + 700; }
+      else if (now > (me.restAt || 0)) me.stamina = Math.min(100, me.stamina + 22 * dt);
+      const speed = running ? F.RUN_SPEED : F.PLAYER_SPEED;
+      const cos = Math.cos(me.yaw), sin = Math.sin(me.yaw);
+      const n = len > 1 ? 1 / len : 1;
+      const tx = (cos * fwd - sin * side) * n * speed, ty = (sin * fwd + cos * side) * n * speed;
+      // snow gives grip, ponds make you slide, and you can't steer much in the air
+      const grip = me.z > 0 ? 3 : F.onIce(me.x, me.y) ? 2.2 : 22;
+      const kk = Math.min(1, grip * dt);
+      me.vx += (tx - me.vx) * kk; me.vy += (ty - me.vy) * kk;
+      // jumping
+      if (S.jumpQueued && me.z <= 0) { me.vz = F.JUMP_SPEED; }
+      S.jumpQueued = false;
+      if (me.z > 0 || me.vz > 0) {
+        me.vz -= F.GRAVITY * dt; me.z += me.vz * dt;
+        if (me.z <= 0) { me.z = 0; me.vz = 0; }
+      }
+      const sp = Math.hypot(me.vx, me.vy);
+      if (sp > 1) {
+        const ox = me.x, oy = me.y;
+        const pos = F.resolveCollisions(ox + me.vx * dt, oy + me.vy * dt, F.PLAYER_RADIUS, me.z);
+        me.x = pos.x; me.y = pos.y;
+        if (dt > 0) { me.vx = (pos.x - ox) / dt; me.vy = (pos.y - oy) / dt; }
+      } else { me.vx = 0; me.vy = 0; }
+      if (now - S.lastSend > 50) {
+        S.lastSend = now;
+        socket.volatile.emit('player:pos', { x: Math.round(me.x * 10) / 10, y: Math.round(me.y * 10) / 10, z: Math.round(me.z), a: Math.round(me.yaw * 1000) / 1000, p: Math.round(me.pitch * 1000) / 1000, s: me.seq });
+      }
+      if (S.mouse.down && S.mode === 'throw') throwBall();
+    }
+
+    const w = S.world;
+    R.easeOthers(w, dt);
+    const ground = me.z <= 0 && Math.hypot(me.vx, me.vy) > 40;
+    if (ground && !world3d.reducedMotion) bobT += dt * (running ? 13 : 9); else bobT *= 0.9;
+    const bob = world3d.reducedMotion ? 0 : Math.sin(bobT) * (running ? 2.6 : 1.6);
+    world3d.render(w, { x: me.x, y: me.y, z: me.z, yaw: me.yaw, pitch: me.pitch, bob, fovKick: running ? 7 : 0, alive: me.alive, ammo: me.ammo }, dt, now);
+
+    if (now - S.lastHud > 100) { S.lastHud = now; updateHud(now); }
+    requestAnimationFrame(loop);
+  }
+
+  function fmtTime(ms) {
+    const s = Math.max(0, Math.ceil(ms / 1000));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
+
+  function updateHud(now) {
+    const w = S.world;
+    $('timer').textContent = fmtTime(w.timeLeft - (now - w.timeAt));
+    const hp = Math.max(0, S.me.hp ?? 100), sh = Math.max(0, S.me.shield || 0);
+    $('hp-bar').style.width = hp + '%'; $('hp-num').textContent = hp;
+    $('hp-bar').classList.toggle('low', hp <= 25);
+    $('sh-bar').style.width = sh + '%'; $('sh-num').textContent = sh;
+    $('st-bar').style.width = S.me.stamina + '%';
+    $('st-bar').classList.toggle('tired', !!S.me.tired);
+    const ammo = Math.max(0, S.me.ammo);
+    $('ammo').textContent = ammo;
+    $('ammo-box').classList.toggle('empty', ammo === 0);
+    // out of snowballs: the Answer questions button pulses until you earn more
+    $('m-q').classList.toggle('pulse', ammo === 0 && S.me.alive && S.mode === 'throw');
+    if (S.feed.length && now - S.feed[S.feed.length - 1].at > 5000) { S.feed.pop(); renderFeed(); }
+
+    $('hidden-chip').hidden = !(S.me.alive && now > S.revealUntil && F.coverAt(S.me.x, S.me.y) >= 0);
+    const ko = $('ko');
+    const dead = !S.me.alive && S.deadAt && now - S.deadAt < F.RESPAWN_MS + 1500;
+    ko.hidden = !dead;
+    if (dead) {
+      $('ko-by').textContent = S.koBy ? `Knocked out ${S.koBy}` : '';
+      const left = Math.max(0, Math.ceil((F.RESPAWN_MS - (now - S.deadAt)) / 1000));
+      $('ko-count').textContent = left > 0 ? `Back in ${left}…` : 'Back in a moment…';
+    }
+    $('crosshair').hidden = !S.me.alive || (S.mode !== 'throw' && !coarse);
+    updateAimOverlay();
+    drawMinimap(now);
+
+    // leaderboard
+    const board = $('board');
+    const ranked = [...w.players.values()].sort((a, b) => b.kos - a.kos);
+    const rows = [];
+    let html = '';
+    if (w.teams && w.teamScores) {
+      const b = w.teamScores.blue, r = w.teamScores.red, tot = Math.max(1, b + r);
+      html += `<div class="teambar"><div style="flex:${Math.max(0.15, b / tot)};background:${F.TEAM_COLOURS.blue}">${b}</div><div style="flex:${Math.max(0.15, r / tot)};background:${F.TEAM_COLOURS.red}">${r}</div></div>`;
+    }
+    const top = ranked.slice(0, w.teams ? 3 : 5);
+    if (!top.some((p) => p.id === S.pid) && mine()) top.push(mine());
+    for (const p of top) {
+      const info = w.roster.get(p.id) || {};
+      const col = w.teams && info.team ? F.TEAM_COLOURS[info.team] : info.colour;
+      rows.push(`<li class="${p.id === S.pid ? 'me' : ''}"><span>${ranked.indexOf(p) + 1}</span><span class="dot" style="background:${col}"></span><span class="nm">${esc(info.name || '')}</span><b>${p.kos}</b></li>`);
+    }
+    board.innerHTML = html + `<h3>Knockouts</h3><ol>${rows.join('')}</ol>`;
+  }
+  const mine = () => S.world.players.get(S.pid);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   // ---------- questions ----------
   function typeset(el) {
@@ -407,105 +613,10 @@
     });
   }
 
-  // ---------- frame loop ----------
-  let lastFrame = performance.now();
-  function loop(now) {
-    const dt = Math.min(0.05, (now - lastFrame) / 1000);
-    lastFrame = now;
-    if (S.screen !== 's-game') { S.looping = false; return; }
-
-    // movement (predicted locally, checked by the server)
-    if (S.me.alive) {
-      let mx = 0, my = 0;
-      const k = S.keys;
-      if (k.has('w') || k.has('arrowup')) my -= 1;
-      if (k.has('s') || k.has('arrowdown')) my += 1;
-      if (k.has('a') || k.has('arrowleft')) mx -= 1;
-      if (k.has('d') || k.has('arrowright')) mx += 1;
-      if (S.stick) { mx = S.stick.dx; my = S.stick.dy; }
-      const len = Math.hypot(mx, my);
-      const f = len > 0.05 ? Math.min(1, len) / len : 0;
-      // Snow gives instant grip; frozen ponds make you slide.
-      const grip = F.onIce(S.me.x, S.me.y) ? 2.2 : 22;
-      const k2 = Math.min(1, grip * dt);
-      S.me.vx += (mx * f * F.PLAYER_SPEED - S.me.vx) * k2;
-      S.me.vy += (my * f * F.PLAYER_SPEED - S.me.vy) * k2;
-      const sp = Math.hypot(S.me.vx, S.me.vy);
-      if (sp > F.PLAYER_SPEED) { S.me.vx *= F.PLAYER_SPEED / sp; S.me.vy *= F.PLAYER_SPEED / sp; }
-      if (sp > 1) {
-        const ox = S.me.x, oy = S.me.y;
-        const pos = F.resolveCollisions(ox + S.me.vx * dt, oy + S.me.vy * dt, F.PLAYER_RADIUS);
-        S.me.x = pos.x; S.me.y = pos.y;
-        if (dt > 0) { S.me.vx = (pos.x - ox) / dt; S.me.vy = (pos.y - oy) / dt; } // walls stop the slide
-      } else { S.me.vx = 0; S.me.vy = 0; }
-      if (!('ontouchstart' in window) || S.mouse.down) aimAtMouse();
-      if (now - S.lastSend > 50) {
-        S.lastSend = now;
-        socket.volatile.emit('player:pos', { x: Math.round(S.me.x * 10) / 10, y: Math.round(S.me.y * 10) / 10, a: Math.round(S.me.angle * 100) / 100, s: S.me.seq });
-      }
-      if (S.mouse.down && S.mode === 'throw') throwBall();
-    }
-
-    const w = S.world;
-    R.easeOthers(w, dt);
-    const mine = w.players.get(S.pid);
-    if (mine) { mine.x = S.me.x; mine.y = S.me.y; mine.angle = S.me.angle; }
-
-    const z = zoom(), sh = panelShift();
-    const cam = { x: S.me.x + sh.x / z, y: S.me.y + sh.y / z, zoom: z * dpr };
-    R.draw(ctx, canvas.width, canvas.height, cam, w, now);
-
-    if (now - S.lastHud > 100) { S.lastHud = now; updateHud(now); }
-    requestAnimationFrame(loop);
-  }
-
-  function fmtTime(ms) {
-    const s = Math.max(0, Math.ceil(ms / 1000));
-    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-  }
-
-  function updateHud(now) {
-    const w = S.world;
-    $('timer').textContent = fmtTime(w.timeLeft - (now - w.timeAt));
-    $('hp-bar').style.width = (S.me.hp || 0) + '%';
-    $('sh-bar').style.width = (S.me.shield || 0) + '%';
-    $('ammo').textContent = `❄ ${Math.max(0, S.me.ammo)}`;
-    if (S.feed.length && now - S.feed[S.feed.length - 1].at > 5000) { S.feed.pop(); renderFeed(); }
-
-    $('hidden-chip').hidden = !(S.me.alive && now > S.revealUntil && F.coverAt(S.me.x, S.me.y) >= 0);
-    const ko = $('ko');
-    const dead = !S.me.alive && S.deadAt && now - S.deadAt < F.RESPAWN_MS + 1500;
-    ko.hidden = !dead;
-    if (dead) {
-      $('ko-by').textContent = S.koBy ? `Knocked out ${S.koBy}` : '';
-      const left = Math.max(0, Math.ceil((F.RESPAWN_MS - (now - S.deadAt)) / 1000));
-      $('ko-count').textContent = left > 0 ? `Back in ${left}…` : 'Back in a moment…';
-    }
-
-    // leaderboard
-    const board = $('board');
-    const ranked = [...w.players.values()].sort((a, b) => b.kos - a.kos);
-    const rows = [];
-    let html = '';
-    if (w.teams && w.teamScores) {
-      const b = w.teamScores.blue, r = w.teamScores.red, tot = Math.max(1, b + r);
-      html += `<div class="teambar"><div style="flex:${Math.max(0.15, b / tot)};background:${F.TEAM_COLOURS.blue}">${b}</div><div style="flex:${Math.max(0.15, r / tot)};background:${F.TEAM_COLOURS.red}">${r}</div></div>`;
-    }
-    const top = ranked.slice(0, w.teams ? 3 : 5);
-    if (!top.some((p) => p.id === S.pid) && mine()) top.push(mine());
-    for (const p of top) {
-      const info = w.roster.get(p.id) || {};
-      const col = w.teams && info.team ? F.TEAM_COLOURS[info.team] : info.colour;
-      rows.push(`<li class="${p.id === S.pid ? 'me' : ''}"><span>${ranked.indexOf(p) + 1}</span><span class="dot" style="background:${col}"></span><span class="nm">${esc(info.name || '')}</span><b>${p.kos}</b></li>`);
-    }
-    board.innerHTML = html + `<h3>Knockouts</h3><ol>${rows.join('')}</ol>`;
-  }
-  const mine = () => S.world.players.get(S.pid);
-  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-
   // ---------- results ----------
   function showResults(res) {
     S.results = res;
+    if (document.pointerLockElement) document.exitPointerLock();
     show('s-end');
     clearTimeout(S.qTimer); S.qTimer = null; S.question = null;
     sessionStorage.removeItem(SESSION_KEY);
@@ -535,7 +646,7 @@
   }
 
   if (window.matchMedia('(pointer: coarse)').matches) {
-    document.querySelector('.qhint').textContent = 'Every correct answer makes snowballs. Tap the map to throw toward that spot. Drag on the left side of the map to move.';
+    document.querySelector('.qhint').textContent = 'Every correct answer makes snowballs. Tap Throw to switch to throwing. Use the left side of the screen to move and drag on the right to look around. Duck into trees or igloos to hide.';
   }
   show('s-join');
 })();

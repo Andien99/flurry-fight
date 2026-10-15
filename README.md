@@ -8,15 +8,19 @@ A live classroom snowball-fight quiz game, in the spirit of Gimkit's Snowbrawl. 
 2. The lobby shows a big join code, the site address and a QR code. **Students** go to the site, type the code and their name, and pick a colour.
 3. Click **Start game**. Students switch between two modes:
    - **Answer questions** (key `1`): every correct answer adds snowballs (3 by default). Wrong answers show the correct answer and pause briefly so guessing doesn't pay. Every 5 in a row gives 2 bonus snowballs.
-   - **Throw** (key `2`, or just click the map): aim with the mouse, click or hold to throw. Space also throws.
-   - Move with WASD or the arrow keys at any time, including while answering.
+   - **Throw** (key `2`, or click the arena): students play in **first person**. The mouse aims (the game captures the pointer; `Esc` releases it), click or hold to throw. Snowballs arc, so aim a little higher for long throws.
+   - **Move** with WASD, **run** with Shift (uses stamina), **jump** with Space: you can hop over logs, stumps, benches, small snow mounds and the short fences. The arrow keys turn and walk, so students can still move while typing an answer.
+   - When a student runs out of snowballs, the **Answer questions** button pulses until they earn more.
+   - The HUD shows a crosshair (with a hit marker when you land a throw), health, shield and stamina, snowballs left, the timer, a kill feed, the leaderboard and a minimap. The teacher's screen keeps the overhead map of the whole arena.
 4. A snowball does 25 damage. Shields soak up damage first. At 0 health you're knocked out and respawn 3 seconds later with 2 seconds of protection.
 5. **Hiding:** walk into a pine grove or an igloo and you disappear from enemies' screens (the canopy fades so you can still see yourself, and a "Hidden" badge appears). Enemies who get within a short distance can see you, and throwing a snowball or getting hit gives your spot away for about a second. Teammates can always see each other, and the teacher's live view shows everyone. Snow mounds, crates, ice blocks, logs, snowmen and the fence block both players and snowballs, so you can also take cover behind them.
 6. **Frozen ponds** are slippery: you keep sliding after you let go of the keys.
 7. Power-ups appear on the map: **Shield Can** (+50 shield), **Hot Cocoa** (+50 health), **Snow Pile** (+5 snowballs).
 8. When time's up (or you click **End game**) you get a results page with every student's knockouts and accuracy, plus a list of questions ordered hardest first. **Download results (CSV)** saves it for your markbook.
 
-Tablets and phones work too: drag on the left side of the map to move, tap anywhere else to throw at that spot.
+Tablets and phones work too: drag on the left side of the screen to move, drag on the right to look around, and use the Throw, Jump and Run buttons.
+
+**Performance:** the 3D view is built to be light (a few hundred draw calls), and it automatically renders at a lower resolution if a device struggles. Try it on a typical school Chromebook before a lesson.
 
 ## Game options
 
@@ -82,10 +86,11 @@ Any host that runs Node.js and supports WebSockets works the same way (Railway, 
 ```
 server.js          game server (Express + Socket.IO)
 public/index.html  student join + game screen
-public/play.js     student game client
+public/play.js     student client: join screen, controls, HUD, questions, results
+public/world3d.js  the 3D arena, characters and effects (three.js)
 public/host.html   teacher screens
 public/host.js     teacher client: question editor, lobby, live view, results
-public/render.js   map and character drawing (shared by both)
+public/render.js   2D map drawing (teacher's live view, minimap, ground texture)
 public/sprites.js  vector artwork for the arena (trees, igloos, snowmen, crates, ice…)
 public/shared.js   map layout, collision, hiding spots and ponds (shared by server and browser)
 public/answers.js  typed-answer marking (shared by server and the question builder)

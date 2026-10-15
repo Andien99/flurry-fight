@@ -20,6 +20,8 @@ app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] })
 const mod = (p) => path.join(__dirname, 'node_modules', p);
 app.use('/vendor/katex', express.static(mod('katex/dist'), { maxAge: '7d' }));
 app.use('/vendor/qrcode', express.static(mod('qrcode-generator/dist'), { maxAge: '7d' }));
+app.use('/vendor/three', express.static(mod('three/build'), { maxAge: '7d' }));
+app.use('/vendor/three-addons', express.static(mod('three/examples/jsm'), { maxAge: '7d' }));
 app.use('/vendor/jszip', express.static(mod('jszip/dist'), { maxAge: '7d' }));
 app.use('/vendor/pdfjs', express.static(mod('pdfjs-dist/build'), { maxAge: '7d' }));
 app.use('/vendor/xlsx', express.static(mod('xlsx/dist'), { maxAge: '7d' }));
@@ -128,7 +130,7 @@ function makePlayer(game, name, colour) {
     name: cleanName(name, game),
     colour: FF.PLAYER_COLOURS.includes(colour) ? colour : FF.PLAYER_COLOURS[Math.floor(Math.random() * FF.PLAYER_COLOURS.length)],
     team: null,
-    x: 0, y: 0, angle: 0, lastPosAt: 0,
+    x: 0, y: 0, z: 0, angle: 0, pitch: 0, lastPosAt: 0,
     hp: FF.MAX_HP, shield: 0, ammo: 0,
     alive: false, respawnAt: 0, invulnUntil: 0, spawnSeq: 0, revealUntil: 0,
     kos: 0, deaths: 0, correct: 0, attempted: 0, streak: 0,
@@ -157,7 +159,7 @@ function spawnPlayer(game, p, now) {
     if (minD > bestScore) { bestScore = minD; best = s; }
   }
   const pos = FF.resolveCollisions(best.x + rand(-15, 15), best.y + rand(-15, 15), FF.PLAYER_RADIUS);
-  Object.assign(p, { x: pos.x, y: pos.y, hp: FF.MAX_HP, alive: true, invulnUntil: now + FF.INVULN_MS, lastPosAt: now });
+  Object.assign(p, { x: pos.x, y: pos.y, z: 0, hp: FF.MAX_HP, alive: true, invulnUntil: now + FF.INVULN_MS, lastPosAt: now });
   p.spawnSeq++;
 }
 
@@ -244,11 +246,12 @@ function inCover(p, now) {
 function sendSnapshots(game, now) {
   const list = [...game.players.values()].filter((p) => p.connected || p.alive);
   const rows = list.map((p) => [p.pid, Math.round(p.x), Math.round(p.y), p.hp, p.shield, p.alive ? 1 : 0,
-    Math.round(p.angle * 100), now < p.invulnUntil ? 1 : 0, p.ammo, p.kos, p.spawnSeq, p.connected ? 1 : 0, 1]);
+    Math.round(p.angle * 100), now < p.invulnUntil ? 1 : 0, p.ammo, p.kos, p.spawnSeq, p.connected ? 1 : 0, 1,
+    Math.round(p.z), Math.round(p.pitch * 100)]);
   const hidden = list.map((p) => inCover(p, now));
   const base = {
     t: game.endsAt - now,
-    b: game.snowballs.map((b) => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.vx), Math.round(b.vy)]),
+    b: game.snowballs.map((b) => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.vx), Math.round(b.vy), Math.round(b.z), Math.round(b.vz)]),
     k: game.pickups.map((k) => [k.id, k.type, k.x, k.y]),
     ts: game.settings.teams ? game.teamScores : null,
   };
@@ -261,7 +264,7 @@ function sendSnapshots(game, now) {
       if (!hidden[i] || o === viewer) return row;
       if (game.settings.teams && o.team && o.team === viewer.team) return row;
       if (viewer.alive && (o.x - viewer.x) ** 2 + (o.y - viewer.y) ** 2 < R2) return row;
-      return [o.pid, 0, 0, 0, 0, 0, 0, 0, 0, o.kos, o.spawnSeq, o.connected ? 1 : 0, 0];
+      return [o.pid, 0, 0, 0, 0, 0, 0, 0, 0, o.kos, o.spawnSeq, o.connected ? 1 : 0, 0, 0, 0];
     });
     io.to(viewer.socketId).volatile.emit('state', { ...base, p });
   }
@@ -277,14 +280,16 @@ function stepGame(game, dt, now) {
   // Snowballs
   const kept = [];
   for (const b of game.snowballs) {
-    b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
-    let hit = b.life <= 0 || FF.blocked(b.x, b.y, FF.SNOWBALL.radius);
+    b.vz -= FF.SNOWBALL.gravity * dt;
+    b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt; b.life -= dt;
+    let hit = b.life <= 0 || FF.blocked3D(b.x, b.y, b.z, FF.SNOWBALL.radius);
     if (!hit) {
       for (const p of game.players.values()) {
         if (!p.alive || p.pid === b.owner || !p.connected) continue;
         if (game.settings.teams && p.team && p.team === b.team) continue;
         const r = FF.PLAYER_RADIUS + FF.SNOWBALL.radius;
         if ((p.x - b.x) ** 2 + (p.y - b.y) ** 2 > r * r) continue;
+        if (b.z < p.z - FF.SNOWBALL.radius || b.z > p.z + FF.PLAYER_HEIGHT + FF.SNOWBALL.radius) continue; // flew over or under
         hit = true;
         if (now < p.invulnUntil) break;
         let dmg = FF.SNOWBALL.damage;
@@ -292,12 +297,12 @@ function stepGame(game, dt, now) {
         p.shield -= absorbed; dmg -= absorbed;
         p.hp -= dmg;
         p.revealUntil = now + FF.REVEAL_HIT_MS;
-        io.to(game.code).emit('hit', { pid: p.pid, x: b.x, y: b.y, shield: absorbed > 0 });
+        io.to(game.code).emit('hit', { pid: p.pid, by: b.owner, x: b.x, y: b.y, z: b.z, shield: absorbed > 0 });
         if (p.hp <= 0) knockOut(game, p, game.players.get(b.owner), now);
         break;
       }
     }
-    if (hit) io.to(game.code).emit('splat', { id: b.id, x: b.x, y: b.y });
+    if (hit) io.to(game.code).emit('splat', { id: b.id, x: b.x, y: b.y, z: Math.max(0, b.z) });
     else kept.push(b);
   }
   game.snowballs = kept;
@@ -493,11 +498,14 @@ io.on('connection', (socket) => {
     // Reject speed hacks: never move further than the speed limit allows (+ slack for jitter).
     let dx = x - p.x, dy = y - p.y;
     const dist = Math.hypot(dx, dy);
-    const maxDist = FF.PLAYER_SPEED * elapsed * 1.5 + 25;
+    const maxDist = FF.RUN_SPEED * elapsed * 1.5 + 25;
     if (dist > maxDist) { dx = (dx / dist) * maxDist; dy = (dy / dist) * maxDist; }
-    const pos = FF.resolveCollisions(p.x + dx, p.y + dy, FF.PLAYER_RADIUS);
+    const z = Number(data.z);
+    p.z = Number.isFinite(z) ? FF.clamp(z, 0, FF.JUMP_MAX + 2) : 0;
+    const pos = FF.resolveCollisions(p.x + dx, p.y + dy, FF.PLAYER_RADIUS, p.z);
     p.x = pos.x; p.y = pos.y;
     if (Number.isFinite(Number(data.a))) p.angle = Number(data.a);
+    if (Number.isFinite(Number(data.p))) p.pitch = FF.clamp(Number(data.p), -1.4, 1.4);
   });
 
   socket.on('player:throw', (data = {}) => {
@@ -512,12 +520,16 @@ io.on('connection', (socket) => {
     p.angle = a;
     p.invulnUntil = Math.min(p.invulnUntil, now); // throwing ends spawn protection
     p.revealUntil = now + FF.REVEAL_THROW_MS;     // and gives away a hiding spot
-    const cos = Math.cos(a), sin = Math.sin(a);
+    // Throw along the aim: yaw `a` across the map, pitch `p` up or down.
+    const pitch = Number.isFinite(Number(data.p)) ? FF.clamp(Number(data.p), -1.4, 1.4) : 0;
+    p.pitch = pitch;
+    const cos = Math.cos(a), sin = Math.sin(a), cp = Math.cos(pitch), sp = Math.sin(pitch);
     const start = FF.PLAYER_RADIUS + FF.SNOWBALL.radius + 2;
+    const speed = FF.SNOWBALL.speed;
     game.snowballs.push({
       id: game.nextId++, owner: p.pid, team: p.team,
-      x: p.x + cos * start, y: p.y + sin * start,
-      vx: cos * FF.SNOWBALL.speed, vy: sin * FF.SNOWBALL.speed, life: FF.SNOWBALL.life,
+      x: p.x + cos * start, y: p.y + sin * start, z: p.z + FF.EYE_HEIGHT - 8,
+      vx: cos * cp * speed, vy: sin * cp * speed, vz: sp * speed, life: FF.SNOWBALL.life,
     });
   });
 

@@ -304,6 +304,8 @@
       p.hidden = false;
       p.tx = a[1]; p.ty = a[2];
       if (snap) { p.x = a[1]; p.y = a[2]; }
+      p.tz = a[13] || 0;
+      if (snap) p.z = p.tz;
       p.hp = a[3]; p.shield = a[4]; p.alive = !!a[5]; p.serverAngle = a[6] / 100; p.inv = !!a[7];
       p.seq = a[10];
       if (id !== world.meId) p.angle = p.serverAngle;
@@ -322,6 +324,7 @@
     for (const p of world.players.values()) {
       if (p.id === world.meId || p.tx == null || p.hidden) continue;
       p.x += (p.tx - p.x) * k; p.y += (p.ty - p.y) * k;
+      if (p.tz != null) p.z = (p.z || 0) + (p.tz - (p.z || 0)) * Math.min(1, k * 1.5);
     }
   }
 
@@ -329,5 +332,5 @@
     return { players: new Map(), roster: new Map(), balls: [], pickups: [], particles: [], snapAt: 0, timeLeft: 0, timeAt: 0, teams: !!teams, spectator: !!spectator, meId: null, teamScores: null };
   }
 
-  window.FFRender = { draw, drawPlayer, burst, applySnapshot, easeOthers, newWorld, roundRect };
+  window.FFRender = { draw, drawGround, drawPlayer, burst, applySnapshot, easeOthers, newWorld, roundRect };
 })();

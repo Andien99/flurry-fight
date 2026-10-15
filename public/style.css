@@ -349,3 +349,67 @@ td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
 .quick-ans { display: flex; gap: 6px; margin-top: 4px; max-width: 460px; }
 .quick-ans input { padding: .45em .65em; }
 .quick-ans button { flex: none; white-space: nowrap; }
+
+/* ---------- 3D first-person HUD ---------- */
+.game #view { cursor: crosshair; }
+.loading3d { position: absolute; inset: 0; display: grid; place-items: center; background: #cfe6f7; color: var(--ink); font: 800 1.6rem var(--display); }
+.crosshair { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; }
+.crosshair i { position: absolute; background: #fff; box-shadow: 0 0 0 1.5px rgba(27,42,74,.75); border-radius: 2px; }
+.crosshair i:nth-child(1) { width: 3px; height: 9px; left: -1.5px; top: -15px; }
+.crosshair i:nth-child(2) { width: 3px; height: 9px; left: -1.5px; top: 6px; }
+.crosshair i:nth-child(3) { width: 9px; height: 3px; left: -15px; top: -1.5px; }
+.crosshair i:nth-child(4) { width: 9px; height: 3px; left: 6px; top: -1.5px; }
+.hitmark { position: absolute; left: -13px; top: -13px; width: 26px; height: 26px; opacity: 0; }
+.hitmark::before, .hitmark::after { content: ""; position: absolute; left: 11px; top: -2px; width: 4px; height: 30px; background: #fff; border-radius: 2px; box-shadow: 0 0 0 1.5px rgba(27,42,74,.8); }
+.hitmark::before { transform: rotate(45deg); } .hitmark::after { transform: rotate(-45deg); }
+.hitmark.on { animation: hitmark .35s ease-out; }
+.hitmark.ko::before, .hitmark.ko::after { background: #ffc93c; }
+@keyframes hitmark { from { opacity: 1; transform: scale(1.25); } to { opacity: 0; transform: scale(.9); } }
+.dmg { position: absolute; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(226,69,60,.55) 100%); }
+.dmg.on { animation: dmg .45s ease-out; }
+@keyframes dmg { from { opacity: 1; } to { opacity: 0; } }
+
+.vitals .vrow { display: flex; justify-content: space-between; font-size: .82rem; color: #c6d6ea; line-height: 1.2; }
+.vitals .vrow b { color: var(--snow); font: 800 .95rem var(--display); }
+.bar i.low { background: var(--mitten); }
+.bar.stamina { height: 7px; }
+.bar.stamina i { background: var(--sun); }
+.bar.stamina i.tired { background: #a0a8b8; }
+
+.minimap { right: 12px; bottom: 14px; border-radius: var(--r-md); border: 3px solid rgba(27,42,74,.85); background: #dfe9f2; box-shadow: 0 4px 14px rgba(27,42,74,.25); }
+.game.qmode .minimap { display: none; }
+
+.ammo-big { display: flex; align-items: center; gap: 4px; padding: 0 14px 0 10px; color: var(--snow); border-left: 2px solid rgba(255,255,255,.2); margin-left: 4px; }
+.ammo-big .flake { font-size: 1.3rem; color: var(--glacier); }
+.ammo-big b { font: 800 1.9rem/1 var(--display); min-width: 1.4ch; text-align: right; }
+.ammo-big.empty b { color: var(--mitten); }
+
+/* Out of snowballs: the Answer questions button pulses */
+.modebar button.pulse { background: var(--sun); color: var(--ink); animation: pulse 1.1s ease-in-out infinite; }
+.modebar button.pulse kbd { opacity: 1; }
+@keyframes pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,201,60,.85); }
+  50% { transform: scale(1.08); box-shadow: 0 0 0 12px rgba(255,201,60,0); }
+}
+@media (prefers-reduced-motion: reduce) { .modebar button.pulse { animation: none; box-shadow: 0 0 0 4px rgba(255,201,60,.6); } }
+.out-hint { position: absolute; left: 50%; top: calc(50% + 34px); transform: translateX(-50%); background: rgba(27,42,74,.88); color: var(--snow); font-weight: 700; padding: .45em .9em; border-radius: 999px; pointer-events: none; white-space: nowrap; }
+
+.aim-overlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(27,42,74,.25); }
+.game.qmode .aim-overlay { right: min(460px, 44vw); }
+.aim-card { display: grid; gap: 10px; justify-items: center; max-width: 520px; background: rgba(27,42,74,.92); color: var(--snow); border-radius: var(--r-lg); padding: 22px 26px; box-shadow: 0 10px 30px rgba(0,0,0,.25); cursor: pointer; text-align: center; }
+.aim-card b { font: 800 1.8rem var(--display); }
+.aim-card .keys { font-weight: 400; color: #c6d6ea; line-height: 2; font-size: .95rem; }
+.aim-card kbd { font: 700 .8rem var(--body); background: rgba(255,255,255,.12); border: 1.5px solid rgba(255,255,255,.35); border-radius: 6px; padding: .1em .45em; margin: 0 .2em 0 .7em; color: var(--snow); }
+.aim-card:active { transform: none; }
+
+.touch { position: absolute; inset: 0; pointer-events: none; }
+.touch .tbtn { pointer-events: auto; position: absolute; border-radius: 50%; width: 76px; height: 76px; padding: 0; background: rgba(27,42,74,.7); color: var(--snow); box-shadow: none; font-size: .9rem; }
+.touch .t-throw { right: 20px; bottom: 210px; width: 92px; height: 92px; background: rgba(226,69,60,.85); font-size: 1rem; }
+.touch .t-jump { right: 124px; bottom: 190px; }
+.touch .t-run { right: 30px; bottom: 316px; width: 64px; height: 64px; }
+.touch .t-run[aria-pressed="true"] { background: var(--sun); color: var(--ink); }
+.game.qmode .touch .tbtn { display: none; }
+@media (max-width: 760px) {
+  .minimap { width: 130px; height: 94px; bottom: auto; top: 64px; right: 8px; }
+  .modebar .ammo-big b { font-size: 1.4rem; }
+}

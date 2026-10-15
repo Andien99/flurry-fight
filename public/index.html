@@ -61,15 +61,30 @@
 <!-- Game -->
 <section id="s-game" class="game" hidden>
   <canvas id="view"></canvas>
+  <div class="dmg" id="dmg"></div>
+  <div class="crosshair" id="crosshair" aria-hidden="true"><i></i><i></i><i></i><i></i><b class="hitmark" id="hitmark"></b></div>
+
   <div class="hud hud-top"><div class="timer" id="timer">5:00</div><div class="feed" id="feed" aria-live="polite"></div></div>
   <div class="hud board" id="board"></div>
   <div class="hud vitals">
-    <small>Health</small><div class="bar"><i id="hp-bar" style="width:100%"></i></div>
-    <small>Shield</small><div class="bar shield"><i id="sh-bar" style="width:0"></i></div>
+    <div class="vrow"><span>Health</span><b id="hp-num">100</b></div><div class="bar"><i id="hp-bar" style="width:100%"></i></div>
+    <div class="vrow"><span>Shield</span><b id="sh-num">0</b></div><div class="bar shield"><i id="sh-bar" style="width:0"></i></div>
+    <div class="vrow"><span>Stamina</span></div><div class="bar stamina"><i id="st-bar" style="width:100%"></i></div>
   </div>
+  <canvas class="hud minimap" id="minimap" width="210" height="152" aria-label="Map"></canvas>
+
   <div class="modebar" role="group" aria-label="Mode">
     <button id="m-q" aria-pressed="true"><kbd>1</kbd> Answer questions</button>
-    <button id="m-t" aria-pressed="false"><kbd>2</kbd> Throw <span class="ammo-in" id="ammo">❄ 0</span></button>
+    <button id="m-t" aria-pressed="false"><kbd>2</kbd> Throw</button>
+    <div class="ammo-big" id="ammo-box" aria-label="Snowballs"><span class="flake" aria-hidden="true">❄</span><b id="ammo">0</b></div>
+  </div>
+  <div class="out-hint" id="out-hint" hidden>Out of snowballs. Answer questions to make more.</div>
+
+  <div class="aim-overlay" id="aim-overlay" hidden>
+    <button class="aim-card" id="aim-btn" type="button">
+      <b>Click to aim</b>
+      <span class="keys"><kbd>Mouse</kbd> look <kbd>Click</kbd> throw <kbd>W A S D</kbd> move <kbd>Shift</kbd> run <kbd>Space</kbd> jump <kbd>1</kbd> questions <kbd>Esc</kbd> free the mouse</span>
+    </button>
   </div>
 
   <aside class="qpanel" id="qpanel" aria-label="Question">
@@ -81,13 +96,19 @@
       <button class="btn-sun" type="submit">Check</button>
     </form>
     <div class="feedback" id="qfeedback" hidden></div>
-    <p class="qhint">Every correct answer makes snowballs. Press 2 to start throwing. WASD or arrow keys move you, even while you answer. Duck into trees or igloos to hide.</p>
+    <p class="qhint">Every correct answer makes snowballs. Press 2 or click the arena to start throwing. You can still move with WASD while you answer, and the arrow keys turn you. Duck into trees or igloos to hide.</p>
   </aside>
 
   <div class="ko-overlay" id="ko" hidden><div><div class="big">Knocked out</div><p id="ko-by"></p><p id="ko-count"></p></div></div>
   <div class="toast" id="toast" hidden></div>
   <div class="hidden-chip" id="hidden-chip" hidden>Hidden. Enemies can't see you unless they get close.</div>
-  <div class="joystick" id="stick" hidden><i></i></div>
+  <div class="touch" id="touch" hidden>
+    <div class="joystick" id="stick" hidden><i></i></div>
+    <button type="button" class="tbtn t-run" id="t-run" aria-pressed="false">Run</button>
+    <button type="button" class="tbtn t-jump" id="t-jump">Jump</button>
+    <button type="button" class="tbtn t-throw" id="t-throw">Throw</button>
+  </div>
+  <div class="loading3d" id="loading3d">Building the arena…</div>
 </section>
 
 <!-- Results -->
@@ -107,6 +128,7 @@
 <script src="shared.js"></script>
 <script src="sprites.js"></script>
 <script src="render.js"></script>
-<script src="play.js"></script>
+<script type="importmap">{ "imports": { "three": "/vendor/three/three.module.min.js", "three/addons/": "/vendor/three-addons/" } }</script>
+<script type="module" src="play.js"></script>
 </body>
 </html>

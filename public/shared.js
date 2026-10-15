@@ -3,10 +3,16 @@
   const MAP = { width: 1800, height: 1300 };
   const BORDER = 26; // fence thickness around the arena
   const PLAYER_RADIUS = 22;
-  const PLAYER_SPEED = 240; // px per second
+  const PLAYER_SPEED = 240;  // walking, units per second
+  const RUN_SPEED = 380;     // holding Shift
+  const PLAYER_HEIGHT = 56;  // hit box height
+  const EYE_HEIGHT = 46;     // first-person camera height
+  const JUMP_SPEED = 340;
+  const GRAVITY = 1150;      // for players
+  const JUMP_MAX = (JUMP_SPEED * JUMP_SPEED) / (2 * GRAVITY); // ≈ 50
   const MAX_HP = 100;
   const MAX_SHIELD = 100;
-  const SNOWBALL = { speed: 660, radius: 8, life: 0.85, damage: 25, cooldown: 0.28 };
+  const SNOWBALL = { speed: 820, radius: 8, life: 1.6, damage: 25, cooldown: 0.28, gravity: 320 };
   const RESPAWN_MS = 3000;
   const INVULN_MS = 2000;
   const REVEAL_DIST = 120;      // enemies this close can see you even in cover
@@ -16,23 +22,24 @@
   // What each kind of map object does. Positions are relative to the object's x, y.
   //   rects/circles: solid (block players and snowballs)
   //   cover: a radius you can walk into to hide (trees, igloos)
+  //   top: height in world units (players can jump over anything lower than a jump)
   const KINDS = {
-    pine:    { cover: 56 },
-    igloo:   { cover: 66 },
-    bare:    { circles: [[0, 0, 13]] },
-    mound:   { circles: [[-50, 2, 32], [50, 2, 32], [0, -4, 42]] },
-    moundS:  { circles: [[0, 0, 30]] },
-    snowman: { circles: [[0, 0, 24]] },
-    stump:   { circles: [[0, 0, 18]] },
-    crate:   { rects: [[-35, -30, 70, 60]] },
-    iceTall: { rects: [[-23, -50, 46, 100]] },
-    iceWide: { rects: [[-51, -27, 102, 54]] },
-    logpile: { rects: [[-32, -62, 64, 124]] },
-    post:    { rects: [[-16, -44, 32, 88]] },
-    bench:   { rects: [[-58, -14, 116, 28]] },
-    log:     { rects: [[-52, -14, 104, 28]] },
-    fenceH:  { rects: [[-34, -9, 68, 18]] },
-    fenceV:  { rects: [[-9, -65, 18, 130]] },
+    pine:    { cover: 56, top: 170 },
+    igloo:   { cover: 66, top: 70 },
+    bare:    { circles: [[0, 0, 13]], top: 160 },
+    mound:   { circles: [[-50, 2, 32], [50, 2, 32], [0, -4, 42]], top: 44 },
+    moundS:  { circles: [[0, 0, 30]], top: 30 },
+    snowman: { circles: [[0, 0, 24]], top: 100 },
+    stump:   { circles: [[0, 0, 18]], top: 22 },
+    crate:   { rects: [[-35, -30, 70, 60]], top: 62 },
+    iceTall: { rects: [[-23, -50, 46, 100]], top: 110 },
+    iceWide: { rects: [[-51, -27, 102, 54]], top: 56 },
+    logpile: { rects: [[-32, -62, 64, 124]], top: 120 },
+    post:    { rects: [[-16, -44, 32, 88]], top: 90 },
+    bench:   { rects: [[-58, -14, 116, 28]], top: 30 },
+    log:     { rects: [[-52, -14, 104, 28]], top: 28 },
+    fenceH:  { rects: [[-34, -9, 68, 18]], top: 40 },
+    fenceV:  { rects: [[-9, -65, 18, 130]], top: 40 },
   };
 
   // Arena layout.
@@ -84,16 +91,17 @@
   ];
 
   // Build collision + cover lists from the objects and the fence.
+  const WALL = 1e6;
   const RECTS = [
-    { x: 0, y: 0, w: MAP.width, h: BORDER }, { x: 0, y: MAP.height - BORDER, w: MAP.width, h: BORDER },
-    { x: 0, y: 0, w: BORDER, h: MAP.height }, { x: MAP.width - BORDER, y: 0, w: BORDER, h: MAP.height },
+    { x: 0, y: 0, w: MAP.width, h: BORDER, top: WALL }, { x: 0, y: MAP.height - BORDER, w: MAP.width, h: BORDER, top: WALL },
+    { x: 0, y: 0, w: BORDER, h: MAP.height, top: WALL }, { x: MAP.width - BORDER, y: 0, w: BORDER, h: MAP.height, top: WALL },
   ];
   const CIRCLES = [];
   const COVERS = [];
   OBJECTS.forEach((o, i) => {
     const def = KINDS[o.k];
-    for (const [dx, dy, w, h] of def.rects || []) RECTS.push({ x: o.x + dx, y: o.y + dy, w, h });
-    for (const [dx, dy, r] of def.circles || []) CIRCLES.push({ x: o.x + dx, y: o.y + dy, r });
+    for (const [dx, dy, w, h] of def.rects || []) RECTS.push({ x: o.x + dx, y: o.y + dy, w, h, top: def.top });
+    for (const [dx, dy, r] of def.circles || []) CIRCLES.push({ x: o.x + dx, y: o.y + dy, r, top: def.top });
     if (def.cover) COVERS.push({ x: o.x, y: o.y, r: def.cover, obj: i });
   });
 
@@ -121,9 +129,11 @@
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 
   // Push a circle (x, y, r) out of every obstacle and keep it inside the map.
-  function resolveCollisions(x, y, r) {
+  // z is how high the player's feet are: anything lower than that is jumped over.
+  function resolveCollisions(x, y, r, z = 0) {
     for (let pass = 0; pass < 3; pass++) {
       for (const o of RECTS) {
+        if (o.top <= z) continue;
         const cx = clamp(x, o.x, o.x + o.w);
         const cy = clamp(y, o.y, o.y + o.h);
         const dx = x - cx, dy = y - cy;
@@ -142,6 +152,7 @@
         }
       }
       for (const c of CIRCLES) {
+        if (c.top <= z) continue;
         const dx = x - c.x, dy = y - c.y;
         const min = r + c.r;
         const d2 = dx * dx + dy * dy;
@@ -172,6 +183,23 @@
     return false;
   }
 
+  // Does a snowball at height z hit the ground, an object or the fence?
+  function blocked3D(x, y, z, r) {
+    if (z <= 0) return true;
+    if (x < BORDER || y < BORDER || x > MAP.width - BORDER || y > MAP.height - BORDER) return true;
+    for (const o of RECTS) {
+      if (z - r >= o.top) continue;
+      const cx = clamp(x, o.x, o.x + o.w), cy = clamp(y, o.y, o.y + o.h);
+      if ((x - cx) ** 2 + (y - cy) ** 2 < r * r) return true;
+    }
+    for (const c of CIRCLES) {
+      if (z - r >= c.top) continue;
+      const m = r + c.r;
+      if ((x - c.x) ** 2 + (y - c.y) ** 2 < m * m) return true;
+    }
+    return false;
+  }
+
   // Index of the cover (tree canopy / igloo) the point is inside, or -1.
   function coverAt(x, y) {
     for (let i = 0; i < COVERS.length; i++) {
@@ -193,10 +221,11 @@
   const TEAM_COLOURS = { blue: '#2f6fe4', red: '#e2453c' };
 
   const api = {
-    MAP, BORDER, PLAYER_RADIUS, PLAYER_SPEED, MAX_HP, MAX_SHIELD, SNOWBALL, RESPAWN_MS, INVULN_MS,
+    MAP, BORDER, PLAYER_RADIUS, PLAYER_SPEED, RUN_SPEED, PLAYER_HEIGHT, EYE_HEIGHT, JUMP_SPEED, GRAVITY, JUMP_MAX,
+    MAX_HP, MAX_SHIELD, SNOWBALL, RESPAWN_MS, INVULN_MS,
     REVEAL_DIST, REVEAL_THROW_MS, REVEAL_HIT_MS,
     KINDS, OBJECTS, GRASS, PONDS, RECTS, CIRCLES, COVERS, SPAWNS, PICKUP_SPOTS, PICKUP_TYPES, PLAYER_COLOURS, TEAM_COLOURS,
-    resolveCollisions, blocked, coverAt, onIce, clamp,
+    resolveCollisions, blocked, blocked3D, coverAt, onIce, clamp,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.FF = api;

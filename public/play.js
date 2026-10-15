@@ -830,35 +830,112 @@ import { World3D } from './world3d.js';
   }
 
   // ---------- results ----------
+  const ORD = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+  const TROPHY = {
+    1: ['#ffd84a', '#e3a41c', '#fff3b0'],
+    2: ['#e3e9f0', '#a3afbe', '#ffffff'],
+    3: ['#eaa76a', '#b06a32', '#ffd9b5'],
+  };
+  function trophySVG(place) {
+    const [fill, dark, shine] = TROPHY[place];
+    return `<svg class="trophy" viewBox="0 0 64 72" role="img" aria-label="${ORD(place)} place trophy">
+      <path d="M17 12 C4 12 4 34 21 34" fill="none" stroke="${dark}" stroke-width="5" stroke-linecap="round"/>
+      <path d="M47 12 C60 12 60 34 43 34" fill="none" stroke="${dark}" stroke-width="5" stroke-linecap="round"/>
+      <path d="M14 6 H50 V22 C50 36 42 44 32 44 C22 44 14 36 14 22 Z" fill="${fill}" stroke="#1b2a4a" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M20 10 V22 C20 28 22 33 26 36" fill="none" stroke="${shine}" stroke-width="3" stroke-linecap="round" opacity=".9"/>
+      <rect x="27" y="44" width="10" height="10" fill="${dark}" stroke="#1b2a4a" stroke-width="3"/>
+      <rect x="16" y="54" width="32" height="12" rx="3" fill="${fill}" stroke="#1b2a4a" stroke-width="3"/>
+      <text x="32" y="30" text-anchor="middle" font-family="Bricolage Grotesque, system-ui, sans-serif" font-weight="800" font-size="17" fill="#1b2a4a">${place}</text>
+    </svg>`;
+  }
+  function podiumAvatar(p, teams, place) {
+    const c = document.createElement('canvas');
+    c.width = 220; c.height = 220; c.className = 'pod-avatar';
+    c.setAttribute('aria-hidden', 'true');
+    const look = { colour: p.colour, ...(p.look || {}), hatColour: teams && p.team ? F.TEAM_COLOURS[p.team] : undefined };
+    if (AV) AV.draw(c.getContext('2d'), 110, 128, 72, look, place === 1 ? 'happy' : 'normal', 0);
+    return c;
+  }
   function showResults(res) {
     S.results = res;
     if (document.pointerLockElement) document.exitPointerLock();
     show('s-end');
     clearTimeout(S.qTimer); S.qTimer = null; S.question = null;
     sessionStorage.removeItem(SESSION_KEY);
-    const ps = res.players;
+    const ps = res.players || [];
+    const me = res.me || null;
     let line = '';
     if (res.teams) {
       const { blue, red } = res.teams;
       line = blue === red ? `It's a draw, ${blue} knockouts each.` : `${blue > red ? 'Blue' : 'Red'} team wins, ${Math.max(blue, red)} knockouts to ${Math.min(blue, red)}.`;
-    } else if (ps[0]) line = ps[0].kos > 0 ? `${ps[0].name} wins with ${ps[0].kos} knockout${ps[0].kos === 1 ? '' : 's'}.` : `No knockouts this time. ${ps[0].name} tops the board with ${ps[0].correct} correct answers.`;
+    } else if (ps[0]) line = ps[0].kos > 0 ? `${ps[0].name} wins with ${ps[0].kos} knockout${ps[0].kos === 1 ? '' : 's'}.` : 'No knockouts this time!';
     $('end-line').textContent = line;
+
+    // podium: 2nd, 1st, 3rd
     const pod = $('podium'); pod.textContent = '';
-    [1, 0, 2].forEach((i) => {
-      const p = ps[i];
-      const d = document.createElement('div');
-      d.className = 'p' + (i + 1);
-      if (p) d.innerHTML = `<div class="place">${i + 1}</div><div class="nm">${esc(p.name)}</div><div>${p.kos} KO</div>`;
-      else d.style.visibility = 'hidden';
-      pod.appendChild(d);
-    });
-    const me = ps.find((p) => p.id === S.pid);
-    const st = $('mystats'); st.textContent = '';
-    if (me) {
-      const acc = me.attempted ? Math.round(100 * me.correct / me.attempted) : 0;
-      const items = [[`#${ps.indexOf(me) + 1}`, 'Place'], [me.kos, 'Knockouts'], [me.deaths, 'Times knocked out'], [`${me.correct}/${me.attempted}`, 'Questions correct'], [`${acc}%`, 'Accuracy']];
-      for (const [v, l] of items) { const d = document.createElement('div'); d.innerHTML = `<b>${v}</b>${l}`; st.appendChild(d); }
+    for (const place of [2, 1, 3]) {
+      const p = ps[place - 1];
+      const col = document.createElement('div');
+      col.className = `pod pod-${place}` + (p && p.id === S.pid ? ' is-me' : '');
+      if (!p) { col.classList.add('empty'); pod.appendChild(col); continue; }
+      col.innerHTML = trophySVG(place);
+      col.appendChild(podiumAvatar(p, res.teams, place));
+      const nm = document.createElement('div'); nm.className = 'pod-name'; nm.textContent = p.name + (p.id === S.pid ? ' (you)' : '');
+      const ko = document.createElement('div'); ko.className = 'pod-ko'; ko.textContent = `${p.kos} knockout${p.kos === 1 ? '' : 's'}`;
+      const block = document.createElement('div'); block.className = 'pod-block'; block.innerHTML = `<span>${ORD(place)}</span>`;
+      if (res.teams && p.team) block.style.setProperty('--team', F.TEAM_COLOURS[p.team]);
+      col.append(nm, ko, block);
+      pod.appendChild(col);
     }
+    const rank = me ? me.rank : ps.findIndex((p) => p.id === S.pid) + 1;
+    $('my-place').textContent = rank > 3 ? `You came ${ORD(rank)} out of ${ps.length}, with ${me ? me.kos : 0} knockout${me && me.kos === 1 ? '' : 's'}.` : '';
+
+    // the student's own question stats
+    $('end-stats').hidden = !me;
+    if (!me) return;
+    const acc = me.attempted ? Math.round(100 * me.correct / me.attempted) : 0;
+    const R0 = 46, C = 2 * Math.PI * R0;
+    const ringCol = acc >= 75 ? '#57d36a' : acc >= 50 ? '#ffc93c' : '#ff7a6e';
+    $('acc-ring').innerHTML = `<svg viewBox="0 0 120 120" class="acc-ring" role="img" aria-label="${acc}% of your answers were correct">
+      <circle cx="60" cy="60" r="${R0}" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="12"/>
+      <circle cx="60" cy="60" r="${R0}" fill="none" stroke="${ringCol}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${(C * acc / 100).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 60 60)"/>
+      <text x="60" y="58" text-anchor="middle" class="ring-num">${me.attempted ? acc + '%' : '–'}</text>
+      <text x="60" y="78" text-anchor="middle" class="ring-lab">correct</text>
+    </svg>`;
+    const st = $('mystats'); st.textContent = '';
+    const tiles = [
+      [`${me.correct}<small>/${me.attempted}</small>`, 'Questions right'],
+      [me.bestStreak || 0, 'Best streak in a row'],
+      [me.kos, 'Knockouts'],
+      [ORD(rank), 'Place'],
+    ];
+    for (const [v, l] of tiles) { const d = document.createElement('div'); d.innerHTML = `<b>${v}</b><span>${l}</span>`; st.appendChild(d); }
+
+    const sb = $('skillbars'); sb.textContent = '';
+    const skills = (me.skills || []).filter((k) => k.attempted).sort((a, b) => b.correct / b.attempted - a.correct / a.attempted);
+    if (skills.length) {
+      sb.innerHTML = '<h3>By skill</h3>';
+      for (const k of skills) {
+        const pc = Math.round(100 * k.correct / k.attempted);
+        const row = document.createElement('div'); row.className = 'skillbar';
+        row.innerHTML = `<span class="sk-name"></span><span class="sk-bar"><i style="width:${pc}%;background:${pc >= 75 ? '#57d36a' : pc >= 50 ? '#ffc93c' : '#ff7a6e'}"></i></span><span class="sk-num">${k.correct}/${k.attempted}</span>`;
+        row.querySelector('.sk-name').textContent = k.skill;
+        sb.appendChild(row);
+      }
+    }
+    const ms = $('missed'); ms.textContent = '';
+    if (me.missed && me.missed.length) {
+      ms.innerHTML = '<h3>Worth another look</h3>';
+      const ul = document.createElement('ul');
+      for (const m of me.missed) {
+        const li = document.createElement('li');
+        const q = document.createElement('div'); q.className = 'mq'; q.textContent = m.q;
+        const a = document.createElement('div'); a.className = 'ma'; a.textContent = 'Answer: ' + m.answer;
+        li.append(q, a); ul.appendChild(li);
+      }
+      ms.appendChild(ul);
+      typeset(ms);
+    } else if (me.attempted) ms.innerHTML = '<p class="all-right">You got every question right. Brilliant!</p>';
   }
 
   if (window.matchMedia('(pointer: coarse)').matches) {

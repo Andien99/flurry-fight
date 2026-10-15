@@ -97,7 +97,7 @@ function cleanName(name, game) {
 }
 
 // ---------- game model ----------
-function createGame(hostSocket, settings, questions, title) {
+function createGame(hostSocket, settings, questions, title, modified = []) {
   const code = newCode();
   const game = {
     code,
@@ -108,8 +108,11 @@ function createGame(hostSocket, settings, questions, title) {
     createdAt: Date.now(),
     state: 'lobby',
     settings,
-    questions,
-    qStats: questions.map(() => ({ attempts: 0, correct: 0 })),
+    // main and modified questions in one array; each pool lists the indexes it can serve
+    questions: [...questions.map((q) => ({ ...q, list: 'main' })), ...modified.map((q) => ({ ...q, list: 'mod' }))],
+    mainIdx: questions.map((_, k) => k),
+    modIdx: modified.map((_, k) => questions.length + k),
+    qStats: [...questions, ...modified].map(() => ({ attempts: 0, correct: 0 })),
     players: new Map(), // pid -> player
     snowballs: [],
     pickups: [],
@@ -135,7 +138,9 @@ function makePlayer(game, name, colour, look) {
     x: 0, y: 0, z: 0, angle: 0, pitch: 0, lastPosAt: 0,
     hp: FF.MAX_HP, shield: 0, ammo: 0,
     alive: false, respawnAt: 0, invulnUntil: 0, spawnSeq: 0, revealUntil: 0,
-    kos: 0, deaths: 0, correct: 0, attempted: 0, streak: 0,
+    kos: 0, deaths: 0, correct: 0, attempted: 0, streak: 0, bestStreak: 0,
+    mod: false, // gets the modified question list (only the host knows)
+    skillStats: {}, missed: [],
     lastThrow: 0,
     qOrder: [], qPtr: 0, current: null, nextQAt: 0,
   };
@@ -183,21 +188,38 @@ function startGame(game) {
   const list = shuffle([...game.players.values()]);
   list.forEach((p, i) => {
     p.team = game.settings.teams ? (i % 2 === 0 ? 'blue' : 'red') : null;
-    Object.assign(p, { kos: 0, deaths: 0, correct: 0, attempted: 0, streak: 0, ammo: 0, shield: 0 });
-    p.qOrder = shuffle(game.questions.map((_, k) => k)); p.qPtr = 0; p.current = null; p.nextQAt = 0;
+    Object.assign(p, { kos: 0, deaths: 0, correct: 0, attempted: 0, streak: 0, bestStreak: 0, ammo: 0, shield: 0, skillStats: {}, missed: [] });
+    p.qOrder = shuffle(poolFor(game, p)); p.qPtr = 0; p.current = null; p.nextQAt = 0;
   });
   for (const p of list) spawnPlayer(game, p, now);
   emitRoster(game);
   io.to(game.code).emit('started', { endsAt: game.endsAt, serverNow: now, settings: game.settings });
 }
 
-function results(game) {
-  const players = [...game.players.values()].map((p) => ({
-    id: p.pid, name: p.name, colour: p.colour, team: p.team,
-    kos: p.kos, deaths: p.deaths, correct: p.correct, attempted: p.attempted,
-  })).sort((a, b) => b.kos - a.kos || b.correct - a.correct || a.deaths - b.deaths);
-  const questions = game.questions.map((q, i) => ({ q: q.q, skill: q.skill || '', attempts: game.qStats[i].attempts, correct: game.qStats[i].correct }));
-  return { players, questions, teams: game.settings.teams ? game.teamScores : null, title: game.title };
+function results(game, viewer = 'host') {
+  const ranked = [...game.players.values()].sort((a, b) => b.kos - a.kos || b.correct - a.correct || a.deaths - b.deaths);
+  const teams = game.settings.teams ? game.teamScores : null;
+  if (viewer === 'host') {
+    const players = ranked.map((p) => ({
+      id: p.pid, name: p.name, colour: p.colour, look: p.look, team: p.team, mod: p.mod,
+      kos: p.kos, deaths: p.deaths, correct: p.correct, attempted: p.attempted, bestStreak: p.bestStreak,
+    }));
+    const questions = game.questions.map((q, i) => ({ q: q.q, skill: q.skill || '', list: q.list, attempts: game.qStats[i].attempts, correct: game.qStats[i].correct }));
+    return { players, questions, teams, title: game.title };
+  }
+  // Students see the standings and their own question stats, not classmates' accuracy or who is on the modified list.
+  const players = ranked.map((p) => ({ id: p.pid, name: p.name, colour: p.colour, look: p.look, team: p.team, kos: p.kos, deaths: p.deaths }));
+  const me = game.players.get(viewer);
+  const mine = me ? {
+    rank: ranked.indexOf(me) + 1, kos: me.kos, deaths: me.deaths, correct: me.correct, attempted: me.attempted, bestStreak: me.bestStreak,
+    skills: Object.entries(me.skillStats).map(([skill, v]) => ({ skill, attempted: v.a, correct: v.c })),
+    missed: me.missed.slice(0, 6),
+  } : null;
+  return { players, me: mine, teams, title: game.title };
+}
+function emitResults(game) {
+  if (game.hostSocketId) io.to(game.hostSocketId).emit('ended', results(game, 'host'));
+  for (const p of game.players.values()) if (p.socketId) io.to(p.socketId).emit('ended', results(game, p.pid));
 }
 
 function endGame(game) {
@@ -206,13 +228,18 @@ function endGame(game) {
   game.endedAt = Date.now();
   game.snowballs = [];
   emitRoster(game);
-  io.to(game.code).emit('ended', results(game));
+  emitResults(game);
 }
 
+// The questions a player draws from: the modified list if they're on it (and it has questions).
+function poolFor(game, p) {
+  if (p.mod && game.modIdx.length) return game.modIdx;
+  return game.mainIdx.length ? game.mainIdx : game.modIdx;
+}
 function serveQuestion(game, p) {
   if (!game.questions.length) return null;
   if (p.current) return p.current.public;
-  if (p.qPtr >= p.qOrder.length) { p.qOrder = shuffle(game.questions.map((_, k) => k)); p.qPtr = 0; }
+  if (p.qPtr >= p.qOrder.length) { p.qOrder = shuffle(poolFor(game, p)); p.qPtr = 0; }
   const idx = p.qOrder[p.qPtr++];
   const q = game.questions[idx];
   if (q.type === 'text') {
@@ -388,11 +415,12 @@ io.on('connection', (socket) => {
   // ----- host -----
   socket.on('host:create', (data = {}, cb) => {
     const questions = cleanQuestions(data.questions);
-    if (!questions.length) return reply(cb, { ok: false, error: 'Add at least one complete question first.' });
-    const game = createGame(socket, cleanSettings(data.settings), questions, data.title);
+    const modified = cleanQuestions(data.modified);
+    if (!questions.length && !modified.length) return reply(cb, { ok: false, error: 'Add at least one complete question first.' });
+    const game = createGame(socket, cleanSettings(data.settings), questions, data.title, modified);
     socketIndex.set(socket.id, { code: game.code, role: 'host' });
     socket.join(game.code);
-    reply(cb, { ok: true, code: game.code, hostToken: game.hostToken, settings: game.settings, questionCount: questions.length });
+    reply(cb, { ok: true, code: game.code, hostToken: game.hostToken, settings: game.settings, questionCount: questions.length, modifiedCount: modified.length });
     emitRoster(game);
   });
 
@@ -406,8 +434,20 @@ io.on('connection', (socket) => {
     reply(cb, {
       ok: true, code: game.code, state: game.state, settings: game.settings, title: game.title,
       players: roster(game), endsAt: game.endsAt, serverNow: Date.now(),
-      results: game.state === 'ended' ? results(game) : null,
+      mods: [...game.players.values()].filter((p) => p.mod).map((p) => p.pid), modifiedCount: game.modIdx.length,
+      results: game.state === 'ended' ? results(game, 'host') : null,
     });
+  });
+
+  // Put a player on (or off) the modified question list. Takes effect from their next question.
+  socket.on('host:modified', (data = {}, cb) => {
+    const game = hostGame(socket);
+    if (!game) return reply(cb, { ok: false });
+    const p = game.players.get(String(data.id));
+    if (!p) return reply(cb, { ok: false });
+    const on = !!data.on && game.modIdx.length > 0;
+    if (p.mod !== on) { p.mod = on; p.qOrder = shuffle(poolFor(game, p)); p.qPtr = 0; }
+    reply(cb, { ok: true, id: p.pid, on: p.mod });
   });
 
   socket.on('host:start', (_d, cb) => {
@@ -470,7 +510,7 @@ io.on('connection', (socket) => {
       game.players.set(p.pid, p);
       if (game.state === 'playing') {
         if (game.settings.teams) { const c = teamCounts(game); p.team = c.blue <= c.red ? 'blue' : 'red'; }
-        p.qOrder = shuffle(game.questions.map((_, k) => k));
+        p.qOrder = shuffle(poolFor(game, p));
         spawnPlayer(game, p, Date.now());
       }
     }
@@ -484,7 +524,7 @@ io.on('connection', (socket) => {
       ok: true, pid: p.pid, token: p.token, name: p.name, colour: p.colour, state: game.state, title: game.title,
       settings: game.settings, endsAt: game.endsAt, serverNow: Date.now(),
       me: { x: p.x, y: p.y, ammo: p.ammo, team: p.team, spawnSeq: p.spawnSeq },
-      results: game.state === 'ended' ? results(game) : null,
+      results: game.state === 'ended' ? results(game, p.pid) : null,
     });
     emitRoster(game);
   });
@@ -560,9 +600,17 @@ io.on('connection', (socket) => {
     p.current = null;
     p.attempted++;
     game.qStats[cur.idx].attempts++;
+    const sk = q.skill || 'Other questions';
+    const ss = p.skillStats[sk] || (p.skillStats[sk] = { a: 0, c: 0 });
+    ss.a++; if (correct) ss.c++;
+    if (!correct && !p.missed.some((m) => m.q === q.q)) {
+      p.missed.push({ q: q.q, answer: q.type === 'text' ? q.answers[0] : q.options[q.correct] });
+      if (p.missed.length > 12) p.missed.shift();
+    }
     let gained = 0;
     if (correct) {
       p.correct++; p.streak++;
+      p.bestStreak = Math.max(p.bestStreak, p.streak);
       game.qStats[cur.idx].correct++;
       const before = p.ammo;
       p.ammo = Math.min(game.settings.maxAmmo, p.ammo + game.settings.ammoPerCorrect + (p.streak > 0 && p.streak % 5 === 0 ? 2 : 0));

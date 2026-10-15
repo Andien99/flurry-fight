@@ -255,7 +255,7 @@
       const data = JSON.parse(await file.text());
       const list = (Array.isArray(data) ? data : [data]).filter((d) => d && Array.isArray(d.questions));
       if (!list.length) throw new Error("That file doesn't contain a Flurry Fight question set.");
-      return { sets: list.map((d) => ({ title: d.title || base, questions: d.questions })) };
+      return { sets: list.map((d) => ({ title: d.title || base, questions: d.questions, modified: Array.isArray(d.modified) ? d.modified : [] })) };
     }
     if (ext === 'csv' || ext === 'tsv') {
       const text = await file.text();

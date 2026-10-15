@@ -22,11 +22,25 @@
   const mathHTML = (s) => { const d = document.createElement('span'); d.textContent = s; typeset(d); return d.innerHTML; };
 
   // ---------- storage ----------
-  const fromPreset = (p) => ({ ...clone(p), id: uid(), from: p.id });
+  const fromPreset = (p) => ({ ...clone(p), modified: clone(p.modified || []), id: uid(), from: p.id, presetVersion: p.version || 1 });
+  // Every set has a main list and a modified list. Starter sets saved before an update get the new questions.
+  function tidySets(list) {
+    for (const s of list) {
+      if (!Array.isArray(s.questions)) s.questions = [];
+      if (!Array.isArray(s.modified)) s.modified = [];
+      const p = (window.FFPresets || []).find((x) => x.id === s.from);
+      if (p && p.version && (s.presetVersion || 1) < p.version) {
+        Object.assign(s, { title: p.title, description: p.description, questions: clone(p.questions), modified: clone(p.modified || []), presetVersion: p.version });
+      }
+    }
+    return list;
+  }
   function loadSets() {
-    try { const s = JSON.parse(localStorage.getItem(SETS_KEY) || 'null'); if (Array.isArray(s) && s.length) return s; } catch (_) { /* fall through */ }
+    try { const s = JSON.parse(localStorage.getItem(SETS_KEY) || 'null'); if (Array.isArray(s) && s.length) return tidySets(s); } catch (_) { /* fall through */ }
     return (window.FFPresets || []).map(fromPreset);
   }
+  const LISTS = ['questions', 'modified'];
+  const listName = (k) => (k === 'modified' ? 'modified list' : 'main list');
   let sets = loadSets();
   let current = sets[0];
   let saveTimer = null;
@@ -52,7 +66,7 @@
   }
   const flagsOf = (q) => (q.flags || []).filter((f) => f !== 'answer');
   const needsAttention = (q) => !isValid(q) || flagsOf(q).length > 0;
-  const countTodo = (s) => s.questions.filter(needsAttention).length;
+  const countTodo = (s) => s.questions.filter(needsAttention).length + (s.modified || []).filter(needsAttention).length;
 
   // ---------- sets list ----------
   function renderSets() {
@@ -61,20 +75,22 @@
       const b = document.createElement('button');
       b.className = 'set-card'; b.type = 'button';
       b.setAttribute('aria-pressed', String(s === current));
-      const n = s.questions.length, todo = countTodo(s);
-      b.innerHTML = `<span class="t">${esc(s.title || 'Untitled set')}</span><span class="m">${n} question${n === 1 ? '' : 's'}${todo ? ` · <b>${todo} to finish</b>` : ''}</span>`;
+      const n = s.questions.length, m = (s.modified || []).length, todo = countTodo(s);
+      b.innerHTML = `<span class="t">${esc(s.title || 'Untitled set')}</span><span class="m">${n} question${n === 1 ? '' : 's'}${m ? ` + ${m} modified` : ''}${todo ? ` · <b>${todo} to finish</b>` : ''}</span>`;
       b.onclick = () => { current = s; cancelEdit(); renderAll(); };
       el.appendChild(b);
     }
   }
 
   function renderSummary() {
-    const n = current.questions.length, ready = current.questions.filter(isValid).length, todo = countTodo(current);
-    $('set-summary').textContent = n ? `${n} question${n === 1 ? '' : 's'}${todo ? `, ${todo} need${todo === 1 ? 's' : ''} attention` : ', all ready'}` : 'No questions yet';
-    $('ready-count').textContent = ready
-      ? `${ready} question${ready === 1 ? '' : 's'} ready${ready < n ? ` (${n - ready} without an answer will be left out)` : ''}`
+    const n = current.questions.length + current.modified.length, todo = countTodo(current);
+    const ready = current.questions.filter(isValid).length, modReady = current.modified.filter(isValid).length;
+    const left = n - ready - modReady;
+    $('set-summary').textContent = n ? `${current.questions.length} question${current.questions.length === 1 ? '' : 's'}${current.modified.length ? ` + ${current.modified.length} in the modified list` : ''}${todo ? `, ${todo} need${todo === 1 ? 's' : ''} attention` : ', all ready'}` : 'No questions yet';
+    $('ready-count').textContent = ready || modReady
+      ? `${ready} question${ready === 1 ? '' : 's'} ready${modReady ? ` + ${modReady} modified` : ''}${left ? ` (${left} without an answer will be left out)` : ''}`
       : 'Add at least one complete question to start a game';
-    $('create').disabled = !ready;
+    $('create').disabled = !ready && !modReady;
     $('filter-todo').textContent = todo ? `Needs attention (${todo})` : 'Needs attention';
   }
 
@@ -83,7 +99,7 @@
 
   $('set-title').oninput = (e) => { current.title = e.target.value; save(); renderSets(); };
   $('new-set').onclick = () => {
-    current = { id: uid(), title: '', questions: [] };
+    current = { id: uid(), title: '', questions: [], modified: [] };
     sets.unshift(current); save(); cancelEdit(); renderAll();
     $('set-title').focus();
   };
@@ -91,11 +107,11 @@
   $('del-set').onclick = () => {
     const gone = current, at = sets.indexOf(current);
     sets.splice(at, 1);
-    if (!sets.length) sets.push({ id: uid(), title: '', questions: [] });
+    if (!sets.length) sets.push({ id: uid(), title: '', questions: [], modified: [] });
     current = sets[0]; save(); cancelEdit(); renderAll();
     showUndo(`Deleted "${gone.title || 'Untitled set'}"`, () => { sets.splice(at, 0, gone); current = gone; save(); renderAll(); });
   };
-  $('export-set').onclick = () => download(`${(current.title || 'question-set').replace(/[^\w-]+/g, '-')}.json`, JSON.stringify({ title: current.title, questions: current.questions }, null, 2), 'application/json');
+  $('export-set').onclick = () => download(`${(current.title || 'question-set').replace(/[^\w-]+/g, '-')}.json`, JSON.stringify({ title: current.title, questions: current.questions, modified: current.modified }, null, 2), 'application/json');
 
   // Starter sets
   $('starter-open').onclick = () => {
@@ -103,7 +119,7 @@
     for (const p of window.FFPresets || []) {
       const have = sets.some((s) => s.from === p.id);
       const item = document.createElement('div'); item.className = 'starter-item';
-      item.innerHTML = `<div class="row"><b>${esc(p.title)}</b><span class="spacer"></span><span class="preview">${p.questions.length} questions</span></div><p>${esc(p.description || '')}</p>`;
+      item.innerHTML = `<div class="row"><b>${esc(p.title)}</b><span class="spacer"></span><span class="preview">${p.questions.length} questions${(p.modified || []).length ? ` + ${p.modified.length} modified` : ''}</span></div><p>${esc(p.description || '')}</p>`;
       const b = document.createElement('button'); b.className = 'btn-small'; b.style.justifySelf = 'start';
       b.textContent = have ? 'Add another copy' : 'Add to my sets';
       b.onclick = () => { const s = fromPreset(p); sets.unshift(s); current = s; save(); renderAll(); $('starter').close(); };
@@ -146,7 +162,10 @@
   }
 
   // ---------- write a question ----------
-  let editIndex = null;
+  let editing = null; // the question object open in the editor
+  const addTarget = choice('add-target', 'questions', () => { if (!editing) $('c-add').textContent = addTarget.get() === 'modified' ? 'Add to modified list' : 'Add question'; });
+  const targetList = () => current[addTarget.get()];
+  const listOf = (q) => LISTS.find((k) => current[k].includes(q));
   let lastField = $('c-q');
   const cType = choice('c-type', 'mc', (v) => { $('c-mc').hidden = v !== 'mc'; $('c-text').hidden = v !== 'text'; updateTry(); });
 
@@ -331,17 +350,17 @@
     const q = readComposer();
     const p = problemWith(q);
     if (p) { flash('c-msg', p[1], true); if (p[0] && $(p[0])) $(p[0]).focus(); else if (!q.options || q.options.length < 2) (wrongInputs()[0] || $('c-q')).focus(); return; }
-    let num;
-    if (editIndex !== null) {
-      current.questions[editIndex] = q;
-      num = editIndex + 1;
+    const k = editing && listOf(editing);
+    if (k) {
+      const i = current[k].indexOf(editing);
+      current[k][i] = q;
       cancelEdit(true);
-      flash('c-msg', `Question ${num} saved.`);
+      flash('c-msg', `Question ${i + 1} in the ${listName(k)} saved.`);
     } else {
-      current.questions.push(q);
-      num = current.questions.length;
+      const list = targetList();
+      list.push(q);
       resetComposer(true);
-      flash('c-msg', `Added as question ${num}. Write the next one.`);
+      flash('c-msg', `Added as question ${list.length} in the ${listName(addTarget.get())}. Write the next one.`);
     }
     changed(); refreshSkillList();
     $('c-q').focus();
@@ -349,9 +368,9 @@
   $('c-add').onclick = saveComposer;
   $('pane-write').addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); saveComposer(); } });
 
-  function editQuestion(i) {
-    const q = current.questions[i];
-    editIndex = i;
+  function editQuestion(q) {
+    const k = listOf(q), i = current[k].indexOf(q);
+    editing = q;
     showTab('write');
     $('c-q').value = q.q || '';
     cType.set(q.type === 'text' ? 'text' : 'mc');
@@ -374,7 +393,7 @@
       banner = document.createElement('div'); banner.id = 'edit-banner'; banner.className = 'editing-banner';
       $('pane-write').prepend(banner);
     }
-    banner.innerHTML = `<span>Editing question ${i + 1}</span><span class="spacer"></span>`;
+    banner.innerHTML = `<span>Editing question ${i + 1} in the ${listName(k)}</span><span class="spacer"></span>`;
     const cancel = document.createElement('button'); cancel.className = 'btn-ghost btn-small'; cancel.textContent = 'Cancel';
     cancel.onclick = () => cancelEdit();
     banner.appendChild(cancel);
@@ -384,91 +403,153 @@
     $(q.q ? (q.type === 'text' ? 'c-answer' : 'c-correct') : 'c-q').focus({ preventScroll: true });
   }
   function cancelEdit(quiet) {
-    editIndex = null;
-    $('c-add').textContent = 'Add question';
+    editing = null;
+    $('c-add').textContent = addTarget.get() === 'modified' ? 'Add to modified list' : 'Add question';
     const b = $('edit-banner'); if (b) b.remove();
     resetComposer(false);
     if (!quiet) renderList();
   }
 
-  // ---------- question list ----------
+  // ---------- question lists (main + modified, side by side) ----------
   const listFilter = choice('list-filter', 'all', () => renderList());
   function renderList() {
-    const box = $('q-list'); box.textContent = '';
+    const nm = current.questions.length, nd = current.modified.length;
+    $('list-heading').textContent = `Questions in this set (${nm}${nd ? ` + ${nd} modified` : ''})`;
+    $('count-main').textContent = nm;
+    $('count-mod').textContent = nd;
+    renderColumn('questions', $('q-list'));
+    renderColumn('modified', $('q-list-mod'));
+  }
+  function questionRow(q, i, k) {
+    const row = document.createElement('div');
+    row.className = 'q-row' + (q === editing ? ' editing' : '');
+    row.draggable = true;
+    row.dataset.i = i; row.dataset.list = k;
+    const tags = [];
+    tags.push(`<span class="tag">${q.type === 'text' ? 'Typed' : 'Options'}</span>`);
+    if (q.skill) tags.push(`<span class="tag">${esc(q.skill)}</span>`);
+    if (!isValid(q)) tags.push('<span class="tag todo">Needs an answer</span>');
+    for (const f of flagsOf(q)) tags.push(`<span class="tag check">${f === 'visual' ? 'Check: mentions a table, diagram or picture' : 'Check: open-ended, may not suit a quick answer'}</span>`);
+    let ans = '';
+    if (q.type === 'text') ans = (q.answers || []).length ? `Answer: <span class="ok">${(q.answers || []).map(mathHTML).join(' or ')}</span>` : '';
+    else if (q.correct >= 0) ans = `<span class="ok">✓ ${mathHTML(q.options[q.correct])}</span> · ${q.options.filter((_, j) => j !== q.correct).map(mathHTML).join(', ')}`;
+    row.innerHTML = `<span class="grip" aria-hidden="true" title="Drag to move">⠿</span><span class="num">${i + 1}</span><div class="body"><div class="qt">${mathHTML(q.q || '(no question text)')}</div><div class="ans">${ans}</div><div class="tags">${tags.join('')}</div></div>`;
+    // Quick finish: click the right option, or type the answer, without opening the editor.
+    const ansBox = row.querySelector('.ans');
+    if (q.type === 'mc' && !(q.correct >= 0) && (q.options || []).length >= 2) {
+      const lab = document.createElement('span'); lab.className = 'quick-label'; lab.textContent = 'Click the correct answer:';
+      ansBox.appendChild(lab);
+      q.options.forEach((o, j) => {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'quick-opt';
+        b.innerHTML = `<b>${'ABCDEF'[j]}</b> ${mathHTML(o)}`;
+        b.setAttribute('aria-label', `Option ${'ABCDEF'[j]} is correct`);
+        b.onclick = () => { q.correct = j; changed(); };
+        ansBox.appendChild(b);
+      });
+    } else if (q.type === 'text' && !(q.answers || []).length) {
+      const f = document.createElement('form'); f.className = 'quick-ans';
+      f.innerHTML = `<input aria-label="Answer for question ${i + 1}" placeholder="Type the answer, then press Enter"><button class="btn-small" type="submit">Save</button>`;
+      f.onsubmit = (e) => {
+        e.preventDefault();
+        const v = f.querySelector('input').value.split(';').map((x) => x.trim()).filter(Boolean);
+        if (!v.length) return;
+        q.answers = v;
+        changed();
+        const next = [...document.querySelectorAll(`.q-row[data-list="${k}"] .quick-ans input, .q-row[data-list="${k}"] .quick-opt`)].find((x) => Number(x.closest('.q-row').dataset.i) > i);
+        if (next) next.focus();
+      };
+      ansBox.appendChild(f);
+    }
+    const other = k === 'questions' ? 'modified' : 'questions';
+    const acts = document.createElement('div'); acts.className = 'acts';
+    const act = (label, aria, fn, cls) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.setAttribute('aria-label', aria); if (cls) b.className = cls; b.onclick = fn; acts.appendChild(b); };
+    const where = `question ${i + 1} in the ${listName(k)}`;
+    act('Edit', `Edit ${where}`, () => editQuestion(q));
+    act('↑', `Move ${where} up`, () => moveWithin(k, i, -1));
+    act('↓', `Move ${where} down`, () => moveWithin(k, i, 1));
+    act('Copy', `Duplicate ${where}`, () => { current[k].splice(i + 1, 0, clone(q)); changed(); });
+    act(k === 'questions' ? 'Copy to modified →' : '← Copy to main', `Copy ${where} to the ${listName(other)}`, () => {
+      current[other].push(clone(q)); changed();
+      flash('list-msg', `Copied to the ${listName(other)} as question ${current[other].length}.`);
+    }, 'to-other');
+    act('Delete', `Delete ${where}`, () => {
+      const [gone] = current[k].splice(i, 1);
+      if (gone === editing) cancelEdit(true);
+      changed();
+      showUndo(`Deleted ${where}`, () => { current[k].splice(i, 0, gone); changed(); });
+    });
+    row.querySelector('.body').appendChild(acts);
+    return row;
+  }
+  function renderColumn(k, box) {
+    box.textContent = '';
     const onlyTodo = listFilter.get() === 'todo';
-    $('list-heading').textContent = `Questions in this set (${current.questions.length})`;
     let shown = 0;
-    current.questions.forEach((q, i) => {
+    current[k].forEach((q, i) => {
       if (onlyTodo && !needsAttention(q)) return;
       shown++;
-      const row = document.createElement('div');
-      row.className = 'q-row' + (i === editIndex ? ' editing' : '');
-      const tags = [];
-      tags.push(`<span class="tag">${q.type === 'text' ? 'Typed' : 'Options'}</span>`);
-      if (q.skill) tags.push(`<span class="tag">${esc(q.skill)}</span>`);
-      if (!isValid(q)) tags.push('<span class="tag todo">Needs an answer</span>');
-      for (const f of flagsOf(q)) tags.push(`<span class="tag check">${f === 'visual' ? 'Check: mentions a table, diagram or picture' : 'Check: open-ended, may not suit a quick answer'}</span>`);
-      let ans = '';
-      if (q.type === 'text') ans = (q.answers || []).length ? `Answer: <span class="ok">${(q.answers || []).map(mathHTML).join(' or ')}</span>` : '';
-      else if (q.correct >= 0) ans = `<span class="ok">✓ ${mathHTML(q.options[q.correct])}</span> · ${q.options.filter((_, k) => k !== q.correct).map(mathHTML).join(', ')}`;
-      row.innerHTML = `<span class="num">${i + 1}</span><div><div class="qt">${mathHTML(q.q || '(no question text)')}</div><div class="ans">${ans}</div><div class="tags">${tags.join('')}</div></div>`;
-      // Quick finish: click the right option, or type the answer, without opening the editor.
-      const ansBox = row.querySelector('.ans');
-      if (q.type === 'mc' && !(q.correct >= 0) && (q.options || []).length >= 2) {
-        const lab = document.createElement('span'); lab.className = 'quick-label'; lab.textContent = 'Click the correct answer:';
-        ansBox.appendChild(lab);
-        q.options.forEach((o, k) => {
-          const b = document.createElement('button'); b.type = 'button'; b.className = 'quick-opt';
-          b.innerHTML = `<b>${'ABCDEF'[k]}</b> ${mathHTML(o)}`;
-          b.setAttribute('aria-label', `Option ${'ABCDEF'[k]} is correct`);
-          b.onclick = () => { q.correct = k; changed(); };
-          ansBox.appendChild(b);
-        });
-      } else if (q.type === 'text' && !(q.answers || []).length) {
-        const f = document.createElement('form'); f.className = 'quick-ans';
-        f.innerHTML = `<input aria-label="Answer for question ${i + 1}" placeholder="Type the answer, then press Enter"><button class="btn-small" type="submit">Save</button>`;
-        f.onsubmit = (e) => {
-          e.preventDefault();
-          const v = f.querySelector('input').value.split(';').map((x) => x.trim()).filter(Boolean);
-          if (!v.length) return;
-          q.answers = v;
-          const next = i + 1;
-          changed();
-          // jump to the next question that still needs an answer
-          const el = [...$('q-list').querySelectorAll('.quick-ans input, .quick-opt')].find((x) => Number(x.closest('.q-row').dataset.i) >= next);
-          if (el) el.focus();
-        };
-        ansBox.appendChild(f);
-      }
-      row.dataset.i = i;
-      const acts = document.createElement('div'); acts.className = 'acts';
-      const act = (label, aria, fn) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.setAttribute('aria-label', aria); b.onclick = fn; acts.appendChild(b); };
-      act('Edit', `Edit question ${i + 1}`, () => editQuestion(i));
-      act('↑', `Move question ${i + 1} up`, () => move(i, -1));
-      act('↓', `Move question ${i + 1} down`, () => move(i, 1));
-      act('Copy', `Duplicate question ${i + 1}`, () => { current.questions.splice(i + 1, 0, clone(q)); if (editIndex !== null && editIndex > i) editIndex++; changed(); });
-      act('Delete', `Delete question ${i + 1}`, () => {
-        const [gone] = current.questions.splice(i, 1);
-        if (editIndex === i) cancelEdit(true); else if (editIndex !== null && editIndex > i) editIndex--;
-        changed();
-        showUndo(`Deleted question ${i + 1}`, () => { current.questions.splice(i, 0, gone); changed(); });
-      });
-      row.appendChild(acts);
-      box.appendChild(row);
+      box.appendChild(questionRow(q, i, k));
     });
     if (!shown) {
       const p = document.createElement('p'); p.className = 'empty-list';
-      p.textContent = onlyTodo ? 'Nothing needs attention. Every question has an answer.' : 'No questions yet. Write one above, generate some from skills, or upload a test.';
+      p.textContent = onlyTodo ? 'Nothing needs attention here.'
+        : k === 'modified' ? 'No modified questions yet. Drag questions here, use “Copy to modified”, or choose “Modified list” under Add questions.'
+          : 'No questions yet. Write one above, generate some from skills, or upload a test.';
       box.appendChild(p);
     }
   }
-  function move(i, d) {
-    const j = i + d;
-    if (j < 0 || j >= current.questions.length) return;
-    const qs = current.questions;
+  function moveWithin(k, i, d) {
+    const qs = current[k], j = i + d;
+    if (j < 0 || j >= qs.length) return;
     [qs[i], qs[j]] = [qs[j], qs[i]];
-    if (editIndex === i) editIndex = j; else if (editIndex === j) editIndex = i;
     changed();
+  }
+
+  // Drag a question to reorder it, or across to the other list to move it there.
+  let drag = null;
+  function dropIndex(box, y) {
+    const rows = [...box.querySelectorAll('.q-row')];
+    for (const r of rows) { const b = r.getBoundingClientRect(); if (y < b.top + b.height / 2) return Number(r.dataset.i); }
+    return null; // after the last one
+  }
+  function clearDropMarks() { document.querySelectorAll('.drop-before, .drop-end').forEach((el) => el.classList.remove('drop-before', 'drop-end')); }
+  for (const [k, id] of [['questions', 'q-list'], ['modified', 'q-list-mod']]) {
+    const box = $(id), col = box.closest('.qcol');
+    box.addEventListener('dragstart', (e) => {
+      const row = e.target.closest && e.target.closest('.q-row');
+      if (!row) return;
+      drag = { list: row.dataset.list, i: Number(row.dataset.i) };
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', 'flurry-question'); } catch (_) { /* some browsers */ }
+      row.classList.add('dragging');
+    });
+    box.addEventListener('dragend', () => { drag = null; clearDropMarks(); document.querySelectorAll('.dragging').forEach((r) => r.classList.remove('dragging')); document.querySelectorAll('.qcol.over').forEach((c) => c.classList.remove('over')); });
+    col.addEventListener('dragover', (e) => {
+      if (!drag) return;
+      e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+      col.classList.add('over');
+      clearDropMarks();
+      const at = dropIndex(box, e.clientY);
+      const target = at == null ? null : box.querySelector(`.q-row[data-i="${at}"]`);
+      if (target) target.classList.add('drop-before'); else box.classList.add('drop-end');
+    });
+    col.addEventListener('dragleave', (e) => { if (!col.contains(e.relatedTarget)) { col.classList.remove('over'); clearDropMarks(); } });
+    col.addEventListener('drop', (e) => {
+      if (!drag) return;
+      e.preventDefault();
+      col.classList.remove('over'); clearDropMarks();
+      let at = dropIndex(box, e.clientY);
+      const from = current[drag.list];
+      const [q] = from.splice(drag.i, 1);
+      const to = current[k];
+      if (at == null) at = to.length;
+      else if (drag.list === k && drag.i < at) at--;
+      to.splice(at, 0, q);
+      const moved = drag.list !== k;
+      drag = null;
+      changed();
+      if (moved) flash('list-msg', `Moved to the ${listName(k)}. Use “Copy” instead to keep it in both lists.`);
+    });
   }
 
   function refreshSkillList() {
@@ -509,10 +590,10 @@
     if (!ids.length) { flash('g-msg', 'Tick at least one skill.', true); return; }
     const count = F.clamp(Math.round(Number($('g-count').value) || 4), 1, 20);
     let added = 0;
-    for (const id of ids) { const qs = GEN.generate(id, count, Number(gLevel.get()), gStyle.get()); current.questions.push(...qs); added += qs.length; }
+    for (const id of ids) { const qs = GEN.generate(id, count, Number(gLevel.get()), gStyle.get()); targetList().push(...qs); added += qs.length; }
     if (!current.title) { const t = GEN.TOPICS.find((x) => x.id === $('g-topic').value); current.title = t ? t.name + ' practice' : 'Practice'; $('set-title').value = current.title; }
     changed(); refreshSkillList();
-    flash('g-msg', `Added ${added} questions. They're at the end of the list below.`);
+    flash('g-msg', `Added ${added} questions to the end of the ${listName(addTarget.get())} below.`);
   };
 
   // ---------- upload a file ----------
@@ -523,16 +604,16 @@
     try {
       const r = await IMP.readFile(file);
       if (r.sets) {
-        for (const s of r.sets) sets.unshift({ id: uid(), title: s.title, questions: s.questions });
+        for (const s of r.sets) sets.unshift({ id: uid(), title: s.title, questions: s.questions, modified: s.modified || [] });
         current = sets[0]; save(); cancelEdit(); renderAll();
         rep.textContent = `Added ${r.sets.length} set${r.sets.length === 1 ? '' : 's'} from ${file.name}.`;
         return;
       }
       if (!r.questions.length) { rep.className = 'upload-report bad'; rep.textContent = `No questions found in ${file.name}. Questions need to be numbered (1. 2. 3. or Q1, Q2…), or laid out as rows of question, answer, wrong answers.`; return; }
       if (uTarget.get() === 'new' || !current.questions.length && !current.title) {
-        const s = { id: uid(), title: r.title || file.name.replace(/\.[^.]+$/, ''), questions: r.questions };
-        if (uTarget.get() === 'new') { sets.unshift(s); current = s; } else { current.title = s.title; current.questions.push(...s.questions); }
-      } else current.questions.push(...r.questions);
+        const s = { id: uid(), title: r.title || file.name.replace(/\.[^.]+$/, ''), questions: r.questions, modified: [] };
+        if (uTarget.get() === 'new') { sets.unshift(s); current = s; } else { current.title = s.title; targetList().push(...s.questions); }
+      } else targetList().push(...r.questions);
       save(); cancelEdit(); renderAll();
       const noAns = r.questions.filter((q) => !isValid(q)).length;
       const visual = r.questions.filter((q) => (q.flags || []).includes('visual')).length;
@@ -576,7 +657,7 @@
   $('paste-add').onclick = () => {
     const qs = IMP.parsePasted($('paste-text').value);
     if (!qs.length) { flash('p-msg', 'No questions found. Each line needs a question and at least one answer, separated by |.', true); return; }
-    current.questions.push(...qs); changed(); $('paste-text').value = '';
+    targetList().push(...qs); changed(); $('paste-text').value = '';
     flash('p-msg', `Added ${qs.length} question${qs.length === 1 ? '' : 's'}.`);
   };
 
@@ -617,15 +698,50 @@
   ['opt-duration', 'opt-ammo', 'opt-wrong'].forEach((id) => { $(id).onchange = saveOptions; });
 
   // ---------- game ----------
-  const G = { code: null, step: 'setup', world: R.newWorld(false, true), stats: new Map(), results: null, looping: false, settings: null };
+  const G = { code: null, step: 'setup', world: R.newWorld(false, true), stats: new Map(), results: null, looping: false, settings: null, mods: new Set(), modCount: 0 };
+
+  // Students who get the modified list. Remembered by name in this browser, so they're ticked again next game.
+  const MOD_KEY = 'flurry-modified-names';
+  const nameKey = (n) => String(n || '').trim().toLowerCase();
+  function savedModNames() { try { return new Set(JSON.parse(localStorage.getItem(MOD_KEY) || '[]')); } catch (_) { return new Set(); } }
+  function rememberMod(name, on) {
+    const set = savedModNames();
+    if (on) set.add(nameKey(name)); else set.delete(nameKey(name));
+    try { localStorage.setItem(MOD_KEY, JSON.stringify([...set])); } catch (_) { /* storage blocked */ }
+  }
+  function setMod(p, on, remember = true) {
+    if (!G.modCount) return;
+    if (on) G.mods.add(p.id); else G.mods.delete(p.id);
+    if (remember) rememberMod(p.name, on);
+    socket.emit('host:modified', { id: p.id, on }, (res) => {
+      if (res && res.ok) { if (res.on) G.mods.add(p.id); else G.mods.delete(p.id); }
+      refreshModViews();
+    });
+    refreshModViews();
+  }
+  const autoModDone = new Set();
+  function autoTickMods(players) {
+    if (!G.modCount) return;
+    const saved = savedModNames();
+    for (const p of players) {
+      if (autoModDone.has(p.id)) continue;
+      autoModDone.add(p.id);
+      if (saved.has(nameKey(p.name)) && !G.mods.has(p.id)) setMod(p, true, false);
+    }
+  }
+  function refreshModViews() {
+    if (G.step === 'lobby') renderLobby([...G.world.roster.values()]);
+    if (G.step === 'live') renderLive(performance.now());
+  }
 
   $('create').onclick = () => {
     $('create-err').textContent = '';
     saveOptions();
-    const qs = current.questions.filter(isValid).map(({ flags, ...q }) => q);
-    socket.emit('host:create', { title: current.title, questions: qs, settings: options() }, (res) => {
+    const strip = (list) => list.filter(isValid).map(({ flags, ...q }) => q);
+    socket.emit('host:create', { title: current.title, questions: strip(current.questions), modified: strip(current.modified), settings: options() }, (res) => {
       if (!res || !res.ok) { $('create-err').textContent = (res && res.error) || 'Could not create the game. Check your connection.'; return; }
       G.code = res.code; G.settings = res.settings;
+      G.mods = new Set(); G.modCount = res.modifiedCount || 0; autoModDone.clear();
       sessionStorage.setItem(HOST_KEY, JSON.stringify({ code: res.code, hostToken: res.hostToken }));
       showLobby();
     });
@@ -646,17 +762,36 @@
     renderLobby([]);
   }
 
+  function paintToggle(b, p) {
+    const on = G.mods.has(p.id);
+    if (b.getAttribute('aria-pressed') === String(on)) return;
+    b.setAttribute('aria-pressed', String(on));
+    b.textContent = on ? 'Modified ✓' : 'Modified';
+    b.title = on ? `${p.name} gets the modified questions. Click to switch back to the main list.` : `Give ${p.name} the modified questions`;
+    b.setAttribute('aria-label', on ? `${p.name} is on the modified list. Switch to the main list` : `Give ${p.name} the modified list`);
+  }
+  function modToggle(p) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'mod-toggle';
+    paintToggle(b, p);
+    b.onclick = () => setMod(p, !G.mods.has(p.id));
+    return b;
+  }
   function renderLobby(players) {
     const el = $('lobby-players'); el.textContent = '';
     const live = players.filter((p) => p.connected);
     $('lobby-count').textContent = live.length ? `${live.length} player${live.length === 1 ? '' : 's'} ready` : 'Waiting for players';
     $('start').disabled = !live.length;
+    $('lobby-mod-help').hidden = !G.modCount;
+    $('lobby-mod-count').textContent = G.mods.size ? `${G.mods.size} on the modified list` : '';
     for (const p of live) {
-      const pill = document.createElement('span'); pill.className = 'pill';
+      const pill = document.createElement('span'); pill.className = 'pill' + (G.mods.has(p.id) ? ' is-mod' : '');
       const d = document.createElement('span'); d.className = 'dot'; d.style.background = p.colour;
-      const x = document.createElement('button'); x.textContent = '×'; x.setAttribute('aria-label', `Remove ${p.name}`);
+      const x = document.createElement('button'); x.textContent = '×'; x.className = 'kick'; x.setAttribute('aria-label', `Remove ${p.name}`);
       x.onclick = () => socket.emit('host:kick', { id: p.id });
-      pill.append(d, document.createTextNode(p.name), x);
+      pill.append(d, document.createTextNode(p.name));
+      if (G.modCount) pill.appendChild(modToggle(p));
+      pill.appendChild(x);
       el.appendChild(pill);
     }
   }
@@ -664,6 +799,7 @@
   socket.on('roster', (r) => {
     G.world.roster = new Map(r.players.map((p) => [p.id, p]));
     if (r.settings) { G.settings = r.settings; G.world.teams = !!r.settings.teams; }
+    autoTickMods(r.players.filter((p) => p.connected));
     if (G.step === 'lobby') renderLobby(r.players);
   });
   socket.on('started', () => { step('live'); $('live-code').textContent = G.code; });
@@ -692,6 +828,8 @@
     socket.emit('host:resume', saved, (res) => {
       if (!res || !res.ok) { sessionStorage.removeItem(HOST_KEY); return; }
       G.code = res.code; G.settings = res.settings;
+      G.mods = new Set(res.mods || []); G.modCount = res.modifiedCount || 0;
+      for (const p of res.players) autoModDone.add(p.id);
       G.world.teams = !!res.settings.teams;
       G.world.roster = new Map(res.players.map((p) => [p.id, p]));
       if (res.state === 'lobby') { showLobby(); renderLobby(res.players); }
@@ -731,10 +869,32 @@
       const s = G.stats.get(p.id) || {}, live = w.players.get(p.id) || {};
       return { ...p, kos: live.kos != null ? live.kos : (s.kos || 0), correct: s.correct || 0, attempted: s.attempted || 0 };
     }).sort((a, b) => b.kos - a.kos || b.correct - a.correct);
-    $('live-table').innerHTML = rows.map((p) => {
-      const col = w.teams && p.team ? F.TEAM_COLOURS[p.team] : p.colour;
-      return `<tr style="${p.connected ? '' : 'opacity:.5'}"><td><span class="dot" style="background:${col}"></span> ${esc(p.name)}${p.connected ? '' : ' (offline)'}</td><td class="n">${p.kos}</td><td class="n">${p.correct}/${p.attempted}</td></tr>`;
-    }).join('');
+    $('live-mod-th').hidden = !G.modCount;
+    // Update rows in place (rebuilding them would swap the Modified buttons out from under the cursor),
+    // and only re-sort while the pointer isn't over the table.
+    const tbody = $('live-table');
+    const old = new Map([...tbody.children].map((tr) => [tr.dataset.id, tr]));
+    const set = (el, text) => { if (el.textContent !== String(text)) el.textContent = text; };
+    const trs = rows.map((p) => {
+      let tr = old.get(p.id);
+      if (!tr) {
+        tr = document.createElement('tr'); tr.dataset.id = p.id;
+        tr.innerHTML = '<td><span class="dot"></span> <span class="nm"></span></td><td class="n"></td><td class="n"></td>';
+        if (G.modCount) { const td = document.createElement('td'); td.appendChild(modToggle(p)); tr.appendChild(td); }
+        tbody.appendChild(tr);
+      }
+      old.delete(p.id);
+      tr.style.opacity = p.connected ? '' : '.5';
+      tr.querySelector('.dot').style.background = w.teams && p.team ? F.TEAM_COLOURS[p.team] : p.colour;
+      set(tr.querySelector('.nm'), p.name + (p.connected ? '' : ' (offline)'));
+      set(tr.children[1], p.kos);
+      set(tr.children[2], `${p.correct}/${p.attempted}`);
+      const b = tr.querySelector('.mod-toggle'); if (b) paintToggle(b, p);
+      return tr;
+    });
+    for (const tr of old.values()) tr.remove();
+    const order = rows.map((p) => p.id).join();
+    if (!tbody.matches(':hover') && tbody.dataset.order !== order) { for (const tr of trs) tbody.appendChild(tr); tbody.dataset.order = order; }
   }
 
   // ---------- results ----------
@@ -752,13 +912,13 @@
     $('res-players').innerHTML = ps.map((p, i) => {
       const acc = p.attempted ? Math.round(100 * p.correct / p.attempted) : 0;
       const col = res.teams && p.team ? F.TEAM_COLOURS[p.team] : p.colour;
-      return `<tr><td>${i + 1}</td><td><span class="dot" style="background:${col}"></span> ${esc(p.name)}</td><td class="n">${p.kos}</td><td class="n">${p.deaths}</td><td class="n">${p.correct}/${p.attempted}</td><td><span class="acc" style="width:${acc * 0.8}px"></span>${p.attempted ? acc + '%' : '–'}</td></tr>`;
+      return `<tr><td>${i + 1}</td><td><span class="dot" style="background:${col}"></span> ${esc(p.name)}${p.mod ? ' <span class="tag mod-tag" title="Answered the modified list">Modified</span>' : ''}</td><td class="n">${p.kos}</td><td class="n">${p.deaths}</td><td class="n">${p.correct}/${p.attempted}</td><td><span class="acc" style="width:${acc * 0.8}px"></span>${p.attempted ? acc + '%' : '–'}</td></tr>`;
     }).join('');
     const qs = res.questions.slice().sort((a, b) => (a.attempts ? a.correct / a.attempts : 2) - (b.attempts ? b.correct / b.attempts : 2));
     const unreached = qs.filter((q) => !q.attempts).length;
     $('res-questions').innerHTML = qs.filter((q) => q.attempts).map((q) => {
       const acc = q.attempts ? Math.round(100 * q.correct / q.attempts) : null;
-      return `<tr><td>${mathHTML(q.q)}</td><td>${esc(q.skill || '')}</td><td class="n">${q.attempts}</td><td>${acc == null ? 'Not attempted' : `<span class="acc" style="width:${acc * 0.8}px;background:${acc < 50 ? 'var(--mitten)' : 'var(--good)'}"></span>${acc}%`}</td></tr>`;
+      return `<tr><td>${mathHTML(q.q)}${q.list === 'mod' ? ' <span class="tag mod-tag">Modified</span>' : ''}</td><td>${esc(q.skill || '')}</td><td class="n">${q.attempts}</td><td>${acc == null ? 'Not attempted' : `<span class="acc" style="width:${acc * 0.8}px;background:${acc < 50 ? 'var(--mitten)' : 'var(--good)'}"></span>${acc}%`}</td></tr>`;
     }).join('') + (unreached ? `<tr><td colspan="4" class="help">${unreached} question${unreached === 1 ? '' : 's'} weren’t reached this game. They’re still in the CSV.</td></tr>` : '');
   }
 
@@ -780,10 +940,10 @@
   $('csv').onclick = () => {
     const res = G.results; if (!res) return;
     const cell = (v) => `"${String(v).replace(/"/g, '""')}"`;
-    const lines = [['Player', 'Team', 'Knockouts', 'Times knocked out', 'Correct', 'Attempted', 'Accuracy %'].map(cell).join(',')];
-    for (const p of res.players) lines.push([p.name, p.team || '', p.kos, p.deaths, p.correct, p.attempted, p.attempted ? Math.round(100 * p.correct / p.attempted) : ''].map(cell).join(','));
-    lines.push('', ['Question', 'Skill', 'Attempts', 'Correct', 'Accuracy %'].map(cell).join(','));
-    for (const q of res.questions) lines.push([q.q.replace(/\\\$/g, '\u0000').replace(/\$/g, '').replace(/\u0000/g, '$'), q.skill || '', q.attempts, q.correct, q.attempts ? Math.round(100 * q.correct / q.attempts) : ''].map(cell).join(','));
+    const lines = [['Player', 'Team', 'Question list', 'Knockouts', 'Times knocked out', 'Correct', 'Attempted', 'Accuracy %'].map(cell).join(',')];
+    for (const p of res.players) lines.push([p.name, p.team || '', p.mod ? 'Modified' : 'Main', p.kos, p.deaths, p.correct, p.attempted, p.attempted ? Math.round(100 * p.correct / p.attempted) : ''].map(cell).join(','));
+    lines.push('', ['Question', 'List', 'Skill', 'Attempts', 'Correct', 'Accuracy %'].map(cell).join(','));
+    for (const q of res.questions) lines.push([q.q.replace(/\\\$/g, '\u0000').replace(/\$/g, '').replace(/\u0000/g, '$'), q.list === 'mod' ? 'Modified' : 'Main', q.skill || '', q.attempts, q.correct, q.attempts ? Math.round(100 * q.correct / q.attempts) : ''].map(cell).join(','));
     const skills = new Map();
     for (const q of res.questions) if (q.skill) { const s = skills.get(q.skill) || [0, 0]; s[0] += q.attempts; s[1] += q.correct; skills.set(q.skill, s); }
     if (skills.size) {

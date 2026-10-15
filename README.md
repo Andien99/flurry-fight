@@ -20,6 +20,7 @@ A live classroom snowball-fight quiz game, in the spirit of Gimkit's Snowbrawl. 
 7. **Lodges:** two 2-storey log lodges stand at the left and right ends of the arena. Go in through the door, or take the stairs on the outside up to the roof deck, which has low walls to hide behind and a Shield Can. Throw down from the windows or the deck, or jump off the open side of the deck back into the arena.
 8. Power-ups appear on the map: **Shield Can** (+50 shield), **Hot Cocoa** (+50 health), **Snow Pile** (+5 snowballs).
 9. When time's up (or you click **End game**) you get a results page with every student's knockouts and accuracy, plus a list of questions ordered hardest first. **Download results (CSV)** saves it for your markbook.
+10. **Students see a podium**: the top three characters with their names and gold, silver and bronze trophies. Below it is their own report: the percentage of questions they got right, questions right out of attempted, best streak, knockouts, place, a bar for each skill, and the questions they got wrong with the correct answers. Students only see their own accuracy, never their classmates'.
 
 Tablets and phones work too: drag on the left side of the screen to move, drag on the right to look around, and use the Throw, Jump and Run buttons.
 
@@ -38,7 +39,7 @@ Tablets and phones work too: drag on the left side of the screen to move, drag o
 
 ## Question sets
 
-Sets are saved in the teacher's browser (use **Export** to keep a `.json` copy or move it to another computer). **Starter sets** adds ready-made sets, including *Year 7 Algebra: pre-test skills* (52 questions across the 9 skills of the Year 7 Algebra pre-test).
+Sets are saved in the teacher's browser (use **Export** to keep a `.json` copy or move it to another computer). **Starter sets** adds ready-made sets, including *Year 7 Algebra: core skills*. It has 48 questions on identifying like terms, collecting like terms, constants, coefficients and number of terms, substitution, and equivalent expressions, plus a 30-question modified list. Copies of the starter set saved before an update refresh themselves automatically.
 
 There are four ways to add questions:
 
@@ -48,6 +49,16 @@ There are four ways to add questions:
 - **Paste a list.** One question per line, parts separated by `|` or a tab (straight from a spreadsheet), correct answer first.
 
 Each question in the list can be edited, moved, copied or deleted (with undo).
+
+### Modified lists
+
+Every set has a **main list** and a **modified list**, shown side by side. The modified list is for students who need simpler questions.
+
+- **Drag** a question from one list to the other to move it (or drag within a list to reorder). **Copy to modified →** keeps it in both lists.
+- **Add to: Main list / Modified list** (above the tabs) decides where new questions go: written, generated, pasted or uploaded.
+- In the **lobby**, click **Modified** on a student's name to give them the modified questions. You can switch students on or off **during the game** from the table beside the live map; it takes effect from their next question.
+- Students can't see who is on the modified list. Names you tick are remembered in your browser and ticked again automatically next game (untick to stop).
+- Results tag modified students and modified questions, and the CSV includes which list each student answered.
 
 **How typed answers are marked.** Spacing, capitals, term order (`6 + 8k` = `8k + 6`), letter order (`ba` = `ab`), equal numbers (`1/2` = `0.5`), and a leading `x =`, a `$` or a unit (`26 cm`) are all accepted. Unsimplified answers (`3k + 5k` for `8k`), unexpanded brackets when the answer is expanded, and `×` or `÷` when the answer has none are marked wrong.
 
@@ -82,6 +93,7 @@ Any host that runs Node.js and supports WebSockets works the same way (Railway, 
 - Up to 60 players per game.
 - If a student's laptop drops out or they refresh, they rejoin automatically as the same player with their score intact. The teacher's page also reconnects after a refresh.
 - Click × beside a name in the lobby to remove a player.
+- The modified-list ticks are remembered by student name, so ask students to join with the same name each time.
 - The server checks movement speed, ammo, throw rate and answers, so students can't edit their way to more snowballs.
 
 ## Files

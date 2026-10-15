@@ -152,11 +152,19 @@
 <!-- Results -->
 <section id="s-end" class="sky" hidden>
   <div class="results">
-    <h1>Game over</h1>
-    <p id="end-line"></p>
-    <div class="podium" id="podium"></div>
-    <h2>Your game</h2>
-    <div class="mystats" id="mystats"></div>
+    <h1 class="end-title">Game over</h1>
+    <p id="end-line" class="end-line"></p>
+    <div class="podium" id="podium" aria-label="Top three players"></div>
+    <p class="my-place" id="my-place"></p>
+    <div class="end-card" id="end-stats">
+      <h2>How you answered</h2>
+      <div class="qstats">
+        <div class="ring-box" id="acc-ring"></div>
+        <div class="stat-tiles" id="mystats"></div>
+      </div>
+      <div class="skillbars" id="skillbars"></div>
+      <div class="missed" id="missed"></div>
+    </div>
   </div>
 </section>
 

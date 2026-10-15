@@ -48,7 +48,15 @@
             <button class="btn-small btn-ghost" id="del-set">Delete set</button>
           </div>
 
-          <h3 class="add-heading">Add questions</h3>
+          <div class="row add-row">
+            <h3 class="add-heading">Add questions</h3>
+            <span class="spacer"></span>
+            <span class="add-to-label" id="add-target-label">Add to</span>
+            <div class="choice choice-small" id="add-target" role="group" aria-labelledby="add-target-label">
+              <button type="button" data-v="questions" aria-pressed="true">Main list</button>
+              <button type="button" data-v="modified" aria-pressed="false">Modified list</button>
+            </div>
+          </div>
           <div class="tabs" role="tablist" aria-label="Ways to add questions">
             <button role="tab" id="tab-write" aria-controls="pane-write" aria-selected="true">Write a question</button>
             <button role="tab" id="tab-gen" aria-controls="pane-gen" aria-selected="false">Generate from skills</button>
@@ -206,7 +214,17 @@ Solve 3x + 5 = 20 | 5</pre>
               <button type="button" data-v="todo" aria-pressed="false" id="filter-todo">Needs attention</button>
             </div>
           </div>
-          <div class="q-list" id="q-list"></div>
+          <p class="help list-help">The <b>modified list</b> is for students who need simpler questions. Drag a question across to move it, or use <b>Copy to modified</b> to keep it in both. You choose who gets the modified list in the lobby or during the game. <span class="ok-msg" id="list-msg" role="status"></span></p>
+          <div class="qcols">
+            <div class="qcol" data-list="questions">
+              <div class="qcol-head"><b>Main list</b><span class="count" id="count-main">0</span><span class="sub">Everyone else</span></div>
+              <div class="q-list" id="q-list"></div>
+            </div>
+            <div class="qcol mod" data-list="modified">
+              <div class="qcol-head"><b>Modified list</b><span class="count" id="count-mod">0</span><span class="sub">Students you choose</span></div>
+              <div class="q-list" id="q-list-mod"></div>
+            </div>
+          </div>
         </div>
 
         <div class="panel">
@@ -279,7 +297,7 @@ Solve 3x + 5 = 20 | 5</pre>
         <button class="btn-ghost" id="cancel-game">Cancel game</button>
         <button class="btn-sun" id="start" disabled>Start game</button>
       </div>
-      <p class="help">Click × beside a name to remove that player.</p>
+      <p class="help">Click × beside a name to remove that player.<span id="lobby-mod-help" hidden> Click <b>Modified</b> to give a student the modified questions (students can't see this). Names you tick are remembered for next time. <b id="lobby-mod-count"></b></span></p>
       <div class="lobby-players" id="lobby-players"></div>
     </div>
   </section>
@@ -292,7 +310,7 @@ Solve 3x + 5 = 20 | 5</pre>
         <div class="row"><div class="big-timer" id="live-timer">5:00</div><span class="spacer"></span><button class="btn-red btn-small" id="end">End game</button></div>
         <div id="live-teams"></div>
         <table>
-          <thead><tr><th>Player</th><th class="n">KO</th><th class="n">Correct</th></tr></thead>
+          <thead><tr><th>Player</th><th class="n">KO</th><th class="n">Correct</th><th id="live-mod-th" hidden>Questions</th></tr></thead>
           <tbody id="live-table"></tbody>
         </table>
         <p class="help">Join code <b id="live-code"></b></p>

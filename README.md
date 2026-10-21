@@ -1,10 +1,10 @@
 # Flurry Fight
 
-A live classroom snowball-fight quiz game, in the spirit of Gimkit's Snowbrawl. Students join on their own devices with a 6-digit code, answer questions to make snowballs, and throw them at each other in a top-down snowy arena. The player (or team) with the most knockouts when time runs out wins.
+A live classroom snowball-fight quiz game, in the spirit of Gimkit's Snowbrawl. Students join on their own devices with a 6-digit code, answer questions to make snowballs, and throw them at each other in a snowy 3D arena. There are two maps: **Snowy Meadow** and **Snow Village**. The player (or team) with the most knockouts when time runs out wins.
 
 ## How a game runs
 
-1. **Teacher** opens `/host.html`, picks or builds a question set, chooses options and clicks **Create game**.
+1. **Teacher** opens `/host.html`, picks or builds a question set, picks a **map** (each has a small preview), chooses options and clicks **Create game**.
 2. The lobby shows a big join code, the site address and a QR code. **Students** go to the site, type the code, then **make their character**: name, colour, hat (beanie, top hat, cowboy hat, crown, viking helmet, earmuffs, propeller cap or none) and moustache (six styles, or none). **Surprise me** picks a random look. The device remembers the look for next time, and it shows on their 3D character, their HUD portrait and the teacher's map.
 3. Click **Start game**. Students switch between two modes:
    - **Answer questions** (key `1`): the question opens as a popup in the middle of the screen. Every correct answer adds snowballs (3 by default). Wrong answers show the correct answer and pause briefly so guessing doesn't pay. Every 5 in a row gives 2 bonus snowballs. `Esc` (shown on the popup) closes it and goes back to throwing.
@@ -31,12 +31,29 @@ Tablets and phones work too: drag on the left side of the screen to move, drag o
 
 | Option | Choices |
 |---|---|
+| Map | Snowy Meadow or Snow Village (remembered for next time) |
 | Length | 2–15 minutes |
 | Mode | Free for all, or two teams (blue vs red, auto-balanced, no friendly fire) |
 | Snowballs per correct answer | 1–10 (bag holds 30) |
 | Pause after a wrong answer | none to 5 seconds |
 | Late joining | allowed or locked once the game starts |
 | Power-ups | on or off |
+
+## Maps
+
+**Snowy Meadow** is the original arena described above: open fields, pine groves, igloos, frozen ponds and two log lodges with roof decks.
+
+**Snow Village** is a snowy village split down the middle by a canal.
+
+- **Hiding spots:** step into a **locker** (eight along the back wall of the school, two in the skate hut), climb into one of the green **wheelie bins** in the lanes, burrow into a deep **snow pile**, or stand in a **pine tree** (including the big village tree in the square). They work like the meadow's trees and igloos: enemies can't see you unless they get close, or you throw or get hit.
+- **Buildings:** a brick **school** you can walk into (doors on three sides, windows you can throw through, desks, a chalkboard), a log **skate hut** by the skating rink, a clock tower, a bakery, a post office, a café and a dozen houses and cabins. The houses are solid: duck behind them.
+- **The canal** is sunk below the streets, deeper than you can jump, so you can't climb straight out. Go down the broad **steps** at either end, or jump in off the bank. Most of it is frozen (slippery). Crates on the towpaths and ice blocks in the channel give cover.
+- **Bridges:** two wooden footbridges cross the canal. Throw down from them, or walk underneath along the towpaths.
+- **Underground:** in the middle the canal runs through a **tunnel under the village square**. Two stairwells lead down from the square. In the tunnel the water hasn't frozen: wading slows you down and the current carries you east. Snowballs can't pass through the tunnel roof, and hiding spots only count on their own level (the village tree hides you on the square, not in the tunnel below it).
+- **Teacher's map:** the tunnel is outlined on the live view, and students down in the canal or tunnel are drawn slightly faded.
+- Power-ups also appear on the bridges, in the school, in the skate hut and down in the canal and tunnel.
+
+The map layout and collision live in `public/shared.js` (one `buildWorld` per map), the 3D buildings in `public/world3d.js` and the top-down drawing in `public/render.js`.
 
 ## Question sets
 
@@ -74,6 +91,8 @@ npm install
 npm start
 ```
 
+`npm test` checks the map physics (walking into the canal, through the tunnel, up the stairwells, over the bridges, into the lockers) and plays bot games on both maps over real sockets.
+
 Open http://localhost:3000/host.html. Students on the same network can join at `http://YOUR-COMPUTER-IP:3000`. School networks often block this, which is why hosting it online (below) is usually easier.
 
 ## Put it online (free, on Render)
@@ -110,11 +129,13 @@ public/host.js     teacher client: question editor, lobby, live view, results
 public/mathtext.js maths-friendly question and answer boxes (uses MathLive for the maths editor)
 public/render.js   2D map drawing (teacher's live view, minimap, ground texture)
 public/sprites.js  vector artwork for the arena (trees, igloos, snowmen, crates, ice…)
-public/shared.js   map layout, lodges, collision, jumping, hiding spots and ponds (shared by server and browser)
+public/shared.js   both maps (layout, lodges, village, canal) plus collision, jumping, hiding spots, ice and water (shared by server and browser)
 public/answers.js  typed-answer marking (shared by server and the question builder)
 public/generators.js  skill-based question generators
 public/importers.js   reads Word, PDF, Excel, CSV and text files into questions
 public/presets.js     starter sets
 public/style.css   styles
 render.yaml        one-click Render deployment
+test/physics.test.js  map physics checks
+test/bots.test.js     bot students play a game on a real server
 ```

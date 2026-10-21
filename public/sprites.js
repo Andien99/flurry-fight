@@ -199,6 +199,64 @@
         <rect x="5" y="120" width="20" height="18" rx="3" fill="${WOOD}" ${SW2}/>
         <ellipse cx="15" cy="5" rx="8" ry="3" fill="${SNOW}" ${SW2}/>`,
     },
+    // ----- Snow Village -----
+    locker: {
+      w: 50, h: 74, ax: 25, ay: 44,
+      svg: `${shadow(27, 70, 22, 4)}
+        <rect x="3" y="3" width="44" height="66" rx="3" fill="#3d8fb3" ${SW}/>
+        <rect x="8" y="8" width="34" height="56" rx="2" fill="#4aa0c4" stroke="#2b6a87" stroke-width="2"/>
+        <path d="M14 15 L36 15 M14 20 L36 20 M14 25 L36 25 M14 50 L36 50 M14 55 L36 55" stroke="#25576f" stroke-width="2.4" stroke-linecap="round"/>
+        <rect x="35" y="34" width="4" height="9" rx="1" fill="#e7eef3"/>
+        <path d="M4 5 Q14 -1 25 3 Q36 -1 46 5 L46 8 L4 8 Z" fill="${SNOW}" ${SW2}/>`,
+    },
+    bin: {
+      w: 90, h: 76, ax: 45, ay: 42,
+      svg: `${shadow(48, 70, 42, 6)}
+        <circle cx="18" cy="66" r="6" fill="#22303f" ${SW2}/><circle cx="72" cy="66" r="6" fill="#22303f" ${SW2}/>
+        <path d="M8 22 L82 22 L78 64 L12 64 Z" fill="#3d7a4f" ${SW}/>
+        <path d="M14 30 L76 30 M16 46 L74 46" stroke="#2e5e3d" stroke-width="2.4"/>
+        <path d="M4 22 L86 22 L80 4 L10 4 Z" fill="#2e5e3d" ${SW}/>
+        <path d="M14 6 Q30 -2 46 4 Q62 -2 78 6 L80 12 L12 12 Z" fill="${SNOW}" ${SW2}/>`,
+    },
+    drift: {
+      w: 140, h: 96, ax: 70, ay: 58,
+      svg: `${shadow(74, 86, 66, 10)}
+        <path d="M8 82 Q4 52 26 46 Q30 18 62 16 Q84 4 104 22 Q132 26 132 58 Q138 80 126 84 Q70 94 8 82 Z" fill="${SNOW}" ${SW}/>
+        <path d="M104 22 Q132 26 132 58 Q138 80 126 84 Q104 88 88 88 Q124 64 104 22 Z" fill="${SNOW_SHADE}"/>
+        <path d="M30 60 Q40 40 60 34" fill="none" stroke="#eef5fb" stroke-width="5" stroke-linecap="round"/>
+        <path d="M60 30 Q66 24 74 26" fill="none" stroke="${SNOW_SHADE}" stroke-width="3" stroke-linecap="round"/>`,
+    },
+    lamp: {
+      w: 30, h: 78, ax: 15, ay: 70,
+      svg: `${shadow(16, 72, 9, 3)}
+        <rect x="12" y="22" width="6" height="50" rx="2" fill="#2b3445"/>
+        <rect x="7" y="8" width="16" height="16" rx="2" fill="#ffe29a" ${SW2}/>
+        <path d="M5 9 L15 1 L25 9 Z" fill="#2b3445" ${SW2}/>
+        <circle cx="15" cy="16" r="10" fill="#ffd36b" opacity=".25"/>`,
+    },
+    stall: {
+      w: 120, h: 92, ax: 60, ay: 52,
+      svg: `${shadow(62, 84, 54, 7)}
+        <rect x="8" y="46" width="104" height="34" rx="3" fill="#b57a43" ${SW}/>
+        <circle cx="28" cy="46" r="5" fill="#e2453c" ${SW2}/><circle cx="48" cy="46" r="5" fill="#ffc93c" ${SW2}/><circle cx="68" cy="46" r="5" fill="#3a86ff" ${SW2}/><circle cx="88" cy="46" r="5" fill="#7ac74f" ${SW2}/>
+        <path d="M4 34 L116 34 L108 8 L12 8 Z" fill="#fff6ea" ${SW}/>
+        <path d="M18 8 L12 34 L28 34 L32 8 Z M46 8 L44 34 L60 34 L60 8 Z M74 8 L76 34 L92 34 L88 8 Z M102 8 L108 34 L116 34 L108 8 Z" fill="#e2453c"/>
+        <path d="M4 34 L116 34 L108 8 L12 8 Z" fill="none" ${SW}/>
+        <path d="M14 10 Q40 2 60 8 Q82 2 106 10 L106 14 L14 14 Z" fill="${SNOW}" ${SW2}/>`,
+    },
+    desk: {
+      w: 62, h: 46, ax: 31, ay: 24,
+      svg: `${shadow(33, 42, 28, 4)}
+        <rect x="8" y="20" width="4" height="20" fill="#39424f"/><rect x="50" y="20" width="4" height="20" fill="#39424f"/>
+        <rect x="3" y="8" width="56" height="16" rx="2" fill="#c98c52" ${SW}/>`,
+    },
+    hydrant: {
+      w: 32, h: 44, ax: 16, ay: 32,
+      svg: `${shadow(17, 40, 12, 3)}
+        <rect x="8" y="12" width="16" height="28" rx="4" fill="#e2453c" ${SW}/>
+        <rect x="2" y="20" width="28" height="7" rx="3" fill="#e2453c" ${SW2}/>
+        <path d="M8 13 Q16 2 24 13 Z" fill="${SNOW}" ${SW2}/>`,
+    },
     tuft: {
       w: 46, h: 22, ax: 23, ay: 13,
       svg: `<path d="M4 16 Q10 6 20 9 Q28 3 36 9 Q43 10 42 16 Q23 20 4 16Z" fill="${SNOW}" stroke="#c9d9e7" stroke-width="2"/>`,
@@ -220,9 +278,11 @@
     },
   };
 
+  DEFS.crateS = { ...DEFS.crate, scale: 0.68 };
+
   const RES = 2.5; // raster pixels per world unit
   const canvases = {};
-  const ready = Promise.all(Object.entries(DEFS).map(([k, d]) => new Promise((resolve) => {
+  const ready = Promise.all(Object.entries(DEFS).filter(([, d]) => !d.scale).map(([k, d]) => new Promise((resolve) => {
     const pad = 4;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-pad} ${-pad} ${d.w + pad * 2} ${d.h + pad * 2}" width="${(d.w + pad * 2) * RES}" height="${(d.h + pad * 2) * RES}">${d.svg}</svg>`;
     const img = new Image();
@@ -237,12 +297,15 @@
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   })));
 
-  // Draw sprite `k` with its anchor at world (x, y).
-  function draw(ctx, k, x, y, alpha = 1) {
-    const s = canvases[k], d = DEFS[k];
+  // Draw sprite `k` with its anchor at world (x, y), optionally scaled.
+  function draw(ctx, k, x, y, alpha = 1, scale = 1) {
+    const d = DEFS[k];
+    if (d && d.scale) { k = Object.keys(DEFS).find((n) => DEFS[n].svg === d.svg && !DEFS[n].scale); scale *= d.scale; }
+    const s = canvases[k];
     if (!s) return false;
     if (alpha !== 1) ctx.globalAlpha = alpha;
-    ctx.drawImage(s.c, x - d.ax - s.pad, y - d.ay - s.pad, d.w + s.pad * 2, d.h + s.pad * 2);
+    const q = scale;
+    ctx.drawImage(s.c, x - (d.ax + s.pad) * q, y - (d.ay + s.pad) * q, (d.w + s.pad * 2) * q, (d.h + s.pad * 2) * q);
     if (alpha !== 1) ctx.globalAlpha = 1;
     return true;
   }

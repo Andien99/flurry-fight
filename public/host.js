@@ -681,6 +681,18 @@
   const getMode = choiceOpt('opt-mode', savedOpts.teams ? 'teams' : 'ffa');
   const getLate = choiceOpt('opt-late', savedOpts.lateJoin === false ? 'off' : 'on');
   const getPickups = choiceOpt('opt-pickups', savedOpts.pickups === false ? 'off' : 'on');
+  const getMap = choiceOpt('opt-map', F.MAPS[savedOpts.map] ? savedOpts.map : 'meadow');
+  // little previews of each map, drawn with the same code as the live view
+  window.FFSprites.ready.then(() => {
+    const was = F.mapId;
+    for (const btn of $('opt-map').querySelectorAll('button')) {
+      const c = btn.querySelector('canvas');
+      F.useMap(btn.dataset.v);
+      const zoom = Math.min(c.width / F.MAP.width, c.height / F.MAP.height);
+      R.draw(c.getContext('2d'), c.width, c.height, { x: F.MAP.width / 2, y: F.MAP.height / 2, zoom }, R.newWorld(false, true), 0);
+    }
+    F.useMap(G.settings ? G.settings.map : was);
+  });
   if (savedOpts.duration) $('opt-duration').value = String(savedOpts.duration);
   if (savedOpts.ammoPerCorrect) $('opt-ammo').value = String(savedOpts.ammoPerCorrect);
   if (savedOpts.wrongDelay != null) $('opt-wrong').value = String(savedOpts.wrongDelay);
@@ -692,6 +704,7 @@
       wrongDelay: Number($('opt-wrong').value),
       lateJoin: getLate() === 'on',
       pickups: getPickups() === 'on',
+      map: getMap(),
     };
   }
   function saveOptions() { try { localStorage.setItem(OPTS_KEY, JSON.stringify(options())); } catch (_) { /* ignore */ } }
@@ -740,7 +753,7 @@
     const strip = (list) => list.filter(isValid).map(({ flags, ...q }) => q);
     socket.emit('host:create', { title: current.title, questions: strip(current.questions), modified: strip(current.modified), settings: options() }, (res) => {
       if (!res || !res.ok) { $('create-err').textContent = (res && res.error) || 'Could not create the game. Check your connection.'; return; }
-      G.code = res.code; G.settings = res.settings;
+      G.code = res.code; G.settings = res.settings; F.useMap(res.settings.map);
       G.mods = new Set(); G.modCount = res.modifiedCount || 0; autoModDone.clear();
       sessionStorage.setItem(HOST_KEY, JSON.stringify({ code: res.code, hostToken: res.hostToken }));
       showLobby();
@@ -796,7 +809,7 @@
 
   socket.on('roster', (r) => {
     G.world.roster = new Map(r.players.map((p) => [p.id, p]));
-    if (r.settings) { G.settings = r.settings; G.world.teams = !!r.settings.teams; }
+    if (r.settings) { G.settings = r.settings; G.world.teams = !!r.settings.teams; F.useMap(r.settings.map); }
     autoTickMods(r.players.filter((p) => p.connected));
     if (G.step === 'lobby') renderLobby(r.players);
   });
@@ -825,7 +838,7 @@
     if (!saved) return;
     socket.emit('host:resume', saved, (res) => {
       if (!res || !res.ok) { sessionStorage.removeItem(HOST_KEY); return; }
-      G.code = res.code; G.settings = res.settings;
+      G.code = res.code; G.settings = res.settings; F.useMap(res.settings.map);
       G.mods = new Set(res.mods || []); G.modCount = res.modifiedCount || 0;
       for (const p of res.players) autoModDone.add(p.id);
       G.world.teams = !!res.settings.teams;

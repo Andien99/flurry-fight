@@ -208,8 +208,8 @@ function boxWithSnow(w, h, d, mat, snowy = true) {
 }
 
 let WOOD_TEX, BIRCH_TEX, RINGS_TEX;
-function buildCrate() {
-  const g = boxWithSnow(70, 60, 60, toon(0xffffff, { map: WOOD_TEX }));
+function buildCrate(snowy = true) {
+  const g = boxWithSnow(70, 60, 60, toon(0xffffff, { map: WOOD_TEX }), snowy);
   g.add(blob(4, 6, 90, 80));
   return g;
 }
@@ -593,6 +593,467 @@ function buildLodge(L) {
   return g;
 }
 
+// ---------- Snow Village ----------
+const hex = (s) => parseInt(String(s).replace('#', ''), 16);
+const stoneTex = (base, line) => () => canvasTex(128, 128, (g, w, h) => {
+  g.fillStyle = base; g.fillRect(0, 0, w, h);
+  g.strokeStyle = line; g.lineWidth = 3;
+  for (let r = 0; r < 4; r++) {
+    const y = r * 32; g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
+    for (let i = 0; i < 3; i++) { const x = ((i + (r % 2) * 0.5) / 3) * w; g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 32); g.stroke(); }
+  }
+  g.fillStyle = 'rgba(255,255,255,0.12)';
+  for (let i = 0; i < 18; i++) g.fillRect((i * 53) % w, (i * 31) % h, 6, 3);
+});
+const brickTex = () => canvasTex(128, 128, (g, w, h) => {
+  g.fillStyle = '#e8dccb'; g.fillRect(0, 0, w, h);
+  for (let r = 0; r < 8; r++) for (let i = -1; i < 4; i++) {
+    const x = i * 40 + (r % 2) * 20 + 2, y = r * 16 + 2;
+    g.fillStyle = ['#b65a46', '#a94f3d', '#c06650'][(r + i + 3) % 3]; g.fillRect(x, y, 36, 12);
+  }
+});
+const lockerTex = () => canvasTex(64, 128, (g, w, h) => {
+  g.fillStyle = '#3d8fb3'; g.fillRect(0, 0, w, h);
+  g.strokeStyle = '#2b6a87'; g.lineWidth = 3; g.strokeRect(4, 4, w - 8, h - 8);
+  g.fillStyle = '#25576f';
+  for (let i = 0; i < 4; i++) g.fillRect(16, 14 + i * 7, 32, 3);
+  for (let i = 0; i < 4; i++) g.fillRect(16, h - 40 + i * 7, 32, 3);
+  g.fillStyle = '#e7eef3'; g.fillRect(48, 60, 6, 14);
+});
+const canopyTex = (a, b) => () => canvasTex(128, 32, (g, w, h) => {
+  for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? b : a; g.fillRect(i * 16, 0, 16, h); }
+});
+const chalkTex = () => canvasTex(256, 160, (g, w, h) => {
+  g.fillStyle = '#6b4428'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#2f5a44'; g.fillRect(10, 10, w - 20, h - 20);
+  g.fillStyle = 'rgba(255,255,255,0.92)'; g.font = '700 34px "Bricolage Grotesque", system-ui, sans-serif'; g.textAlign = 'center';
+  g.fillText('2x + 3 = 11', w / 2, 66); g.fillText('x = ?', w / 2, 116);
+});
+const clockTex = () => canvasTex(128, 128, (g, w) => {
+  g.fillStyle = '#2b3445'; g.beginPath(); g.arc(64, 64, 62, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#fbf6e8'; g.beginPath(); g.arc(64, 64, 55, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#2b3445';
+  for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; g.fillRect(64 + Math.cos(a) * 46 - 3, 64 + Math.sin(a) * 46 - 3, 6, 6); }
+  g.strokeStyle = '#2b3445'; g.lineCap = 'round';
+  g.lineWidth = 7; g.beginPath(); g.moveTo(64, 64); g.lineTo(64, 30); g.stroke();
+  g.lineWidth = 5; g.beginPath(); g.moveTo(64, 64); g.lineTo(90, 72); g.stroke();
+});
+const waterTex = () => canvasTex(128, 64, (g, w, h) => {
+  g.fillStyle = '#2f6f99'; g.fillRect(0, 0, w, h);
+  g.strokeStyle = 'rgba(200,235,255,0.55)'; g.lineWidth = 3; g.lineCap = 'round';
+  for (let i = 0; i < 9; i++) { const x = (i * 37) % w, y = 6 + (i * 13) % (h - 12); g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + 10, y - 4, x + 22, y); g.stroke(); }
+}, [8, 1]);
+const glowTex = canvasTex(64, 64, (g) => {
+  const r = g.createRadialGradient(32, 32, 1, 32, 32, 31);
+  r.addColorStop(0, 'rgba(255,226,150,0.95)'); r.addColorStop(0.4, 'rgba(255,200,110,0.35)'); r.addColorStop(1, 'rgba(255,200,110,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 64, 64);
+});
+const glowMat = new THREE.SpriteMaterial({ map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+function glow(x, h, y, size) { const s = new THREE.Sprite(glowMat); s.position.set(x, h, y); s.scale.set(size, size, 1); return s; }
+const lightMat = new THREE.MeshBasicMaterial({ color: 0xffe29a });   // lit windows, lanterns
+let V_TEX = null;
+function villageTextures() {
+  if (V_TEX) return V_TEX;
+  V_TEX = {
+    stone: stoneTex('#a9b3bf', '#7f8a98')(), dark: stoneTex('#6c7684', '#4f5866')(), flag: stoneTex('#c3c8cf', '#9aa2ad')(),
+    brick: brickTex(), locker: lockerTex(), chalk: chalkTex(), clock: clockTex(), log: logWallTex(), plank: plankTex(),
+    canopy: [canopyTex('#e2453c', '#fff6ea')(), canopyTex('#2f6fe4', '#fff6ea')(), canopyTex('#3d8b5f', '#fff6ea')()],
+  };
+  for (const k of ['stone', 'dark', 'flag', 'brick', 'log', 'plank']) V_TEX[k].wrapS = V_TEX[k].wrapT = THREE.RepeatWrapping;
+  return V_TEX;
+}
+// a textured box whose texture tiles at world scale, with an even ink outline
+function tiledBox(w, h, d, mat, x, b, y, tile = 48, withOutline = true) {
+  const m = mesh(boxUV(new THREE.BoxGeometry(w, h, d), w, h, d, tile), mat, x, b + h / 2, y, withOutline, 1.0);
+  if (withOutline) m.children[0].scale.set(1 + 2 / w, 1 + 2 / h, 1 + 2 / d);
+  return m;
+}
+function textSign(text, w, h, bg = '#6b4428', fg = '#ffe9b0') {
+  const tex = canvasTex(256, 64, (c, cw, ch) => {
+    c.fillStyle = bg; c.fillRect(0, 0, cw, ch); c.strokeStyle = '#2b3445'; c.lineWidth = 6; c.strokeRect(3, 3, cw - 6, ch - 6);
+    c.fillStyle = fg; c.font = '800 38px "Bricolage Grotesque", system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(text, cw / 2, ch / 2 + 2);
+  });
+  return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex }));
+}
+
+// A gable roof in local space: the ridge runs along x, the slopes fall to ±z.
+function gableRoof(W, Dd, baseY, rise, roofCol, wallCol) {
+  const g = new THREE.Group();
+  const ov = 10, s = Dd / 2 + ov, L = Math.hypot(s, rise), a = Math.atan2(rise, s), t = 7;
+  const roofMat = toon(hex(roofCol)), snow = toon(SNOW);
+  for (const side of [1, -1]) {
+    const slab = mesh(new THREE.BoxGeometry(W + ov * 2, t, L), roofMat, 0, baseY + rise / 2, side * s / 2, true, 1.03);
+    slab.rotation.x = side * a; g.add(slab);
+    const n = new THREE.Vector3(0, Math.cos(a), side * Math.sin(a));
+    const sn = mesh(new THREE.BoxGeometry(W + ov * 2 - 6, 5, L - 5), snow, 0, baseY + rise / 2, side * s / 2, false);
+    sn.position.addScaledVector(n, t / 2 + 2); sn.rotation.x = side * a; g.add(sn);
+  }
+  g.add(mesh(new THREE.BoxGeometry(W + ov * 2, 6, 12), snow, 0, baseY + rise + 2, 0, false));
+  const tri = new THREE.Shape(); tri.moveTo(-Dd / 2, 0); tri.lineTo(Dd / 2, 0); tri.lineTo(0, rise * (Dd / 2) / s); tri.closePath();
+  const triGeo = new THREE.ShapeGeometry(tri).rotateY(Math.PI / 2);
+  for (const side of [1, -1]) {
+    const m = new THREE.Mesh(triGeo, toon(hex(wallCol), { side: THREE.DoubleSide }));
+    m.position.set(side * (W / 2), baseY, 0); g.add(m);
+  }
+  return g;
+}
+
+function buildHouse(H) {
+  const T = villageTextures();
+  const g = new THREE.Group();
+  if (H.tower) {
+    const stone = toon(0xffffff, { map: T.stone });
+    g.add(tiledBox(H.w, H.h, H.d, stone, 0, 0, 0, 40));
+    for (const [dx, dy, ry] of [[0, H.d / 2 + 0.6, 0], [0, -H.d / 2 - 0.6, Math.PI], [H.w / 2 + 0.6, 0, Math.PI / 2], [-H.w / 2 - 0.6, 0, -Math.PI / 2]]) {
+      const face = new THREE.Mesh(G('clockface', () => new THREE.CircleGeometry(28, 28)), new THREE.MeshBasicMaterial({ map: T.clock }));
+      face.position.set(dx, H.h - 46, dy); face.rotation.y = ry; g.add(face);
+      const win = new THREE.Mesh(G('belfry', () => new THREE.PlaneGeometry(26, 34)), lightMat);
+      win.position.set(dx * 1.001, 70, dy * 1.001); win.rotation.y = ry; g.add(win);
+    }
+    g.add(tiledBox(H.w + 10, 8, H.d + 10, toon(0x8f98a6), 0, H.h, 0, 40, true));
+    const roof = mesh(G('towerroof', () => new THREE.ConeGeometry(H.w * 0.78, H.rise, 4)), toon(hex(H.roof)), 0, H.h + 8 + H.rise / 2, 0, true, 1.04);
+    roof.rotation.y = Math.PI / 4; g.add(roof);
+    const cap = mesh(G('towercap', () => new THREE.ConeGeometry(H.w * 0.4, H.rise * 0.5, 4)), toon(SNOW), 0, H.h + 8 + H.rise * 0.75 + 1, 0, false);
+    cap.rotation.y = Math.PI / 4; g.add(cap);
+    g.add(mesh(G('vane', () => new THREE.CylinderGeometry(1.5, 1.5, 24, 6)), toon(INK), 0, H.h + 8 + H.rise + 10, 0, false));
+    g.position.set(H.x + H.w / 2, 0, H.y + H.d / 2);
+    g.add(blob(6, 8, H.w + 60, H.d + 60));
+    return g;
+  }
+  const alongX = H.ridge !== 'y';
+  const W = alongX ? H.w : H.d, Dd = alongX ? H.d : H.w;
+  const cx = H.x + H.w / 2, cy = H.y + H.d / 2;
+  // the door faces the canal (for houses along x) or the middle of the village
+  const doorSide = alongX ? (cy < 700 ? 1 : -1) : (cx < 1200 ? -1 : 1); // (a quarter turn maps local +z to map -x)
+  const wallMat = H.log ? toon(0xffffff, { map: T.log }) : toon(hex(H.wall));
+  g.add(tiledBox(W, H.h, Dd, wallMat, 0, 0, 0, 48));
+  const trim = toon(0x5c3a22), white = toon(0xf7f3ea), snow = toon(SNOW);
+  if (!H.log) {
+    for (const x of [-W / 2, W / 2]) for (const z of [-Dd / 2, Dd / 2]) g.add(mesh(G('hpost' + H.h, () => new THREE.BoxGeometry(7, H.h, 7)), trim, x, H.h / 2, z, false));
+    g.add(mesh(new THREE.BoxGeometry(W + 4, 6, Dd + 4), trim, 0, H.h - 3, 0, false));
+  }
+  g.add(mesh(new THREE.BoxGeometry(W + 6, 8, Dd + 6), toon(0x9aa5b6), 0, 4, 0, false)); // stone plinth
+  // windows (warm light inside) with snowy sills
+  const winY = H.h * 0.56;
+  const addWindow = (x, z, rotY) => {
+    const w = new THREE.Group();
+    w.add(mesh(G('wframe', () => new THREE.BoxGeometry(28, 32, 3)), white, 0, 0, 0, true, 1.06));
+    const glass = new THREE.Mesh(G('wglass', () => new THREE.BoxGeometry(21, 25, 3.6)), lightMat); w.add(glass);
+    w.add(mesh(G('wbar', () => new THREE.BoxGeometry(2.4, 25, 4)), trim, 0, 0, 0, false));
+    w.add(mesh(G('wbarh', () => new THREE.BoxGeometry(21, 2.4, 4)), trim, 0, 0, 0, false));
+    w.add(mesh(G('wsill', () => new THREE.BoxGeometry(34, 4, 8)), snow, 0, -17, 3, false));
+    for (const sx of [-1, 1]) w.add(mesh(G('shutter', () => new THREE.BoxGeometry(9, 30, 2)), toon(hex(H.roof)), sx * 19, 0, 0.5, false));
+    w.position.set(x, winY, z); w.rotation.y = rotY; g.add(w);
+  };
+  const n = Math.max(1, Math.floor((W - 30) / 56));
+  for (const side of [1, -1]) for (let i = 0; i < n; i++) {
+    const x = -W / 2 + (W / (n + 1)) * (i + 1);
+    if (side === doorSide && Math.abs(x) < 34) continue;
+    addWindow(x, side * (Dd / 2 + 1.5), side > 0 ? 0 : Math.PI);
+  }
+  if (Dd >= 120) for (const side of [1, -1]) addWindow(side * (W / 2 + 1.5), 0, side * Math.PI / 2);
+  // front door with a wreath, a step and maybe a shop sign
+  const dz = doorSide * (Dd / 2 + 2);
+  const door = new THREE.Group();
+  door.add(mesh(G('door', () => new THREE.BoxGeometry(34, 60, 4)), toon(0x7a4a2a), 0, 30, 0, true, 1.05));
+  door.add(mesh(G('doorframe', () => new THREE.BoxGeometry(42, 66, 2)), white, 0, 33, -1.2, false));
+  door.add(mesh(G('knob', () => new THREE.SphereGeometry(2.2, 8, 6)), toon(0xffc93c), 11, 30, 2.6, false));
+  const wreath = mesh(G('wreath', () => new THREE.TorusGeometry(8, 3, 6, 14)), toon(0x2c7046), 0, 46, 3, false); door.add(wreath);
+  door.add(mesh(G('bow', () => new THREE.SphereGeometry(2.8, 8, 6)), toon(0xe2453c), 0, 38, 4.5, false));
+  door.add(mesh(G('step', () => new THREE.BoxGeometry(50, 6, 16)), snow, 0, 3, 8, false));
+  door.position.set(0, 0, dz); door.rotation.y = doorSide > 0 ? 0 : Math.PI; g.add(door);
+  if (H.sign) {
+    const sign = textSign(H.sign, 64, 16);
+    sign.position.set(0, 76, dz + doorSide * 1.2); sign.rotation.y = doorSide > 0 ? 0 : Math.PI; g.add(sign);
+  }
+  g.add(gableRoof(W, Dd, H.h, H.rise, H.roof, H.log ? '#8f5d36' : H.wall));
+  if (H.chimney) {
+    const ch = new THREE.Group();
+    ch.add(tiledBox(18, 50, 18, toon(0xffffff, { map: T.brick }), 0, 0, 0, 32));
+    ch.add(mesh(G('chcap', () => new THREE.BoxGeometry(23, 6, 23)), snow, 0, 52, 0, false));
+    ch.position.set(W * 0.25, H.h + H.rise * 0.35, -Dd * 0.18); g.add(ch);
+  }
+  if (!alongX) g.rotation.y = -Math.PI / 2; // local x (the ridge) now runs along map y
+  g.position.set(cx, 0, cy);
+  g.add(blob(6, 8, W + 50, Dd + 50));
+  return g;
+}
+
+// School, skate hut and the canal pieces are drawn from the map's boxes.
+function buildVillageBoxes() {
+  const T = villageTextures();
+  const g = new THREE.Group();
+  const brick = toon(0xffffff, { map: T.brick }), logs = toon(0xffffff, { map: T.log }), plank = toon(0xffffff, { map: T.plank });
+  const stone = toon(0xffffff, { map: T.stone }), dark = toon(0xffffff, { map: T.dark });
+  const trim = toon(0xf7f3ea), snow = toon(SNOW), rail = toon(0x5c3a22), iron = toon(0x39424f);
+  const tun = F.extra && F.extra.canal && F.extra.canal.tunnel;
+  const inTunnel = (x0, x1) => tun && x0 >= tun.x0 - 1 && x1 <= tun.x1 + 1;
+  for (const [x, y, w, d, b, t, kind] of F.BOXES) {
+    const h = t - b, cx = x + w / 2, cy = y + d / 2;
+    if (kind === 'brick' || kind === 'logwall') {
+      g.add(tiledBox(w, h, d, kind === 'brick' ? brick : logs, cx, b, cy, 48));
+      if (b > 0) g.add(mesh(new THREE.BoxGeometry(w + 3, 4, d + 3), trim, cx, b + 2, cy, false));          // lintel
+      if (b === 0 && t < 50) g.add(mesh(new THREE.BoxGeometry(w + 4, 3, d + 4), snow, cx, t + 1.5, cy, false)); // sill
+    } else if (kind === 'roof') {
+      g.add(tiledBox(w + 8, h, d + 8, toon(0xe9dfcf), cx, b, cy, 64)); // a pale ceiling inside
+    } else if (kind === 'earth') {
+      // split the canal walls so the stretch inside the tunnel is darker
+      const cuts = tun ? [x, Math.max(x, Math.min(x + w, tun.x0)), Math.max(x, Math.min(x + w, tun.x1)), x + w] : [x, x + w];
+      for (let i = 0; i < cuts.length - 1; i++) {
+        const x0 = cuts[i], x1 = cuts[i + 1];
+        if (x1 - x0 < 0.5) continue;
+        g.add(tiledBox(x1 - x0, h - 0.6, d, inTunnel(x0, x1) ? dark : stone, (x0 + x1) / 2, b, cy, 40, false));
+      }
+    } else if (kind === 'street') {
+      g.add(tiledBox(w, h - 1, d, dark, cx, b, cy, 40, false)); // the tunnel ceiling
+    } else if (kind === 'pillar') {
+      g.add(tiledBox(w, h - 0.6, d, stone, cx, b, cy, 32));
+    } else if (kind === 'bridge') {
+      g.add(tiledBox(w, h, d, plank, cx, b, cy, 40));
+    } else if (kind === 'rail') {
+      // posts and a top rail; dark iron round the stairwells, wood on the bridges
+      const mat = b > 0 ? rail : iron, len = Math.max(w, d), along = w >= d, n = Math.max(2, Math.round(len / 34) + 1);
+      for (let i = 0; i < n; i++) {
+        const t2 = -len / 2 + (len * i) / (n - 1);
+        g.add(mesh(G('rpost' + h, () => new THREE.BoxGeometry(5, h, 5)), mat, along ? cx + t2 : cx, b + h / 2, along ? cy : cy + t2, false));
+      }
+      g.add(mesh(new THREE.BoxGeometry(along ? len : 5, 5, along ? 5 : len), mat, cx, t - 2, cy, true, 1.04));
+      g.add(mesh(new THREE.BoxGeometry(along ? len : 6, 2, along ? 6 : len), snow, cx, t + 1, cy, false));
+    }
+  }
+  return g;
+}
+
+function buildRamp(r) {
+  const T = villageTextures();
+  const g = new THREE.Group();
+  const base = Math.min(r.h0, r.h1, F.baseFloorAt(r.x + r.w / 2, r.y + r.h / 2)) - 8;
+  const len = r.axis === 'y' ? r.h : r.w;
+  const span = r.a1 - r.a0, start = r.axis === 'y' ? r.y : r.x;
+  if (r.kind === 'bridge') {
+    // a sloping plank walkway, then a flat landing to the deck, over a stone abutment
+    const run = Math.abs(span), rise = r.h1 - r.h0, L = Math.hypot(run, rise), a = Math.atan2(rise, run);
+    const plank = toon(0xffffff, { map: T.plank }), wood = toon(WOOD_DARK), stone = toon(0xffffff, { map: T.stone });
+    const mid = (r.a0 + r.a1) / 2, w = r.w;
+    const slope = mesh(new THREE.BoxGeometry(w, 6, L), plank, r.x + w / 2, (r.h0 + r.h1) / 2 - 3, mid, true, 1.03);
+    slope.rotation.x = -Math.sign(span) * a; g.add(slope);
+    const flatStart = r.a1, flatEnd = span > 0 ? r.y + r.h : r.y, fl = Math.abs(flatEnd - flatStart);
+    if (fl > 1) {
+      g.add(tiledBox(w, r.h1 - 6, fl, stone, r.x + w / 2, 0, (flatStart + flatEnd) / 2, 32));
+      g.add(tiledBox(w, 6, fl, plank, r.x + w / 2, r.h1 - 6, (flatStart + flatEnd) / 2, 40));
+    }
+    for (const sx of [r.x + 4, r.x + w - 4]) {
+      const rl = mesh(new THREE.BoxGeometry(5, 5, L), wood, sx, (r.h0 + r.h1) / 2 + 28, mid, true, 1.05); rl.rotation.x = slope.rotation.x; g.add(rl);
+      for (let i = 0; i <= 3; i++) {
+        const c = r.a0 + span * (i / 3), hh = r.h0 + rise * (i / 3);
+        g.add(mesh(G('brpost', () => new THREE.BoxGeometry(5, 30, 5)), wood, sx, hh + 15, c, false));
+      }
+      if (fl > 1) g.add(mesh(new THREE.BoxGeometry(5, 5, fl), wood, sx, r.h1 + 28, (flatStart + flatEnd) / 2, true, 1.05));
+    }
+    return g;
+  }
+  // stone steps (the physics is a smooth slope)
+  const steps = Math.max(4, Math.round(Math.abs(r.h1 - r.h0) / 7));
+  const flag = toon(0xffffff, { map: T.flag });
+  for (let i = 0; i < steps; i++) {
+    const c0 = r.a0 + (span * i) / steps, c1 = r.a0 + (span * (i + 1)) / steps;
+    const top = r.h0 + (r.h1 - r.h0) * ((i + 0.5) / steps);
+    const sw = Math.abs(c1 - c0), cc = (c0 + c1) / 2, hh = top - base;
+    if (r.axis === 'y') g.add(tiledBox(r.w, hh, sw, flag, r.x + r.w / 2, base, cc, 40));
+    else g.add(tiledBox(sw, hh, r.h, flag, cc, base, r.y + r.h / 2, 40));
+  }
+  return g;
+}
+
+function buildCanal() {
+  const c = F.extra.canal, T = villageTextures();
+  const g = new THREE.Group();
+  const flag = toon(0xffffff, { map: T.flag }), stone = toon(0xffffff, { map: T.stone }), darkFloor = toon(0x22303f);
+  const chY0 = 670, chY1 = 730, x0 = 380, x1 = 2020;
+  // towpaths (raised either side of the channel) and the channel bed
+  g.add(tiledBox(x1 - x0, c.depth - c.channel, chY0 - c.y, flag, (x0 + x1) / 2, c.channel - 0.1, (c.y + chY0) / 2, 40, false));
+  g.add(tiledBox(x1 - x0, c.depth - c.channel, c.y + c.h - chY1, flag, (x0 + x1) / 2, c.channel - 0.1, (chY1 + c.y + c.h) / 2, 40, false));
+  g.add(mesh(new THREE.BoxGeometry(x1 - x0, 4, chY1 - chY0), darkFloor, (x0 + x1) / 2, c.channel - 2, (chY0 + chY1) / 2, false));
+  // stairwell landings at the bottom of the steps
+  g.add(tiledBox(c.well.w, 8, 30, flag, c.well.x + c.well.w / 2, c.depth - 8, 615, 40, false));
+  g.add(tiledBox(c.well.w, 8, 30, flag, c.well.x + c.well.w / 2, c.depth - 8, 785, 40, false));
+  // stone edging along the open stretches of the canal
+  for (const [a, b] of [[c.x, c.tunnel.x0], [c.tunnel.x1, c.x + c.w]]) {
+    for (const y of [c.y - 6, c.y + c.h + 6]) g.add(tiledBox(b - a, 5, 12, stone, (a + b) / 2, 0, y, 32));
+  }
+  // arches at the tunnel mouths
+  const arch = G('arch', () => new THREE.TorusGeometry(66, 8, 8, 20, Math.PI));
+  for (const x of [c.tunnel.x0, c.tunnel.x1]) {
+    const m = mesh(arch, stone, x, c.channel, c.y + c.h / 2, true, 1.05);
+    m.rotation.y = Math.PI / 2; g.add(m);
+    g.add(tiledBox(14, 18, 18, stone, x, c.channel + 56, c.y + c.h / 2, 24)); // keystone
+  }
+  // lanterns along the tunnel walls
+  for (let x = c.tunnel.x0 + 50; x < c.tunnel.x1 - 20; x += 100) {
+    for (const [y, s] of [[c.y + 3, 1], [c.y + c.h - 3, -1]]) {
+      g.add(mesh(G('lbracket', () => new THREE.BoxGeometry(4, 4, 10)), toon(0x39424f), x, -30, y + s * 3, false));
+      g.add(mesh(G('lantern', () => new THREE.BoxGeometry(9, 13, 9)), lightMat, x, -36, y + s * 7, true, 1.15));
+    }
+  }
+  return g;
+}
+// Moving and see-through things in the canal (kept out of the static merge).
+function buildCanalLive(scene) {
+  const c = F.extra.canal, live = { water: [] };
+  const iceMat = new THREE.MeshPhongMaterial({ color: 0xa9daf5, transparent: true, opacity: 0.82, shininess: 100, specular: 0xffffff });
+  for (const s of F.ICE) {
+    if (s.round || s.z >= 0) continue;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(s.w, s.h).rotateX(-Math.PI / 2), iceMat);
+    m.position.set(s.x + s.w / 2, s.z + 0.6, s.y + s.h / 2); scene.add(m);
+  }
+  for (const w of F.WATER) {
+    const tex = waterTex(); tex.repeat.set(w.w / 60, 1);
+    const mat = new THREE.MeshPhongMaterial({ color: 0xffffff, map: tex, transparent: true, opacity: 0.85, shininess: 60 });
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w.w, w.h).rotateX(-Math.PI / 2), mat);
+    m.position.set(w.x + w.w / 2, w.z + 5, w.y + w.h / 2); scene.add(m);
+    live.water.push({ tex, speed: w.fx / 60 });
+  }
+  for (let x = c.tunnel.x0 + 50; x < c.tunnel.x1 - 20; x += 100) for (const y of [c.y + 10, c.y + c.h - 10]) scene.add(glow(x, -36, y, 46));
+  return live;
+}
+
+function buildLocker() {
+  const T = villageTextures();
+  const g = new THREE.Group();
+  const body = toon(0x3d8fb3), face = toon(0xffffff, { map: T.locker });
+  const W = 46, H = 92, Dp = 40;
+  const part = (w, h, d, mat, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.userData.cover = true; g.add(m); };
+  part(W, H, 3, body, 0, H / 2, -Dp / 2 + 1.5);            // back
+  part(3, H, Dp, body, -W / 2 + 1.5, H / 2, 0);             // sides
+  part(3, H, Dp, body, W / 2 - 1.5, H / 2, 0);
+  part(W, 3, Dp, body, 0, H - 1.5, 0);                      // top
+  part(W, 3, Dp, body, 0, 1.5, 0);                          // floor
+  const door = new THREE.Mesh(new THREE.BoxGeometry(W - 4, H - 6, 2.5), face);
+  door.geometry.translate((W - 4) / 2, 0, 0);               // hinge on the left edge
+  door.position.set(-W / 2 + 2, H / 2, Dp / 2); door.rotation.y = -1.1; door.userData.cover = true; g.add(door);
+  return g;
+}
+function buildBin() {
+  const g = new THREE.Group();
+  const green = toon(0x3d7a4f), lid = toon(0x2e5e3d), dark = toon(0x22303f);
+  const part = (geo, mat, x, y, z, rx = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.x = rx; m.userData.cover = true; g.add(m); return m; };
+  part(new THREE.BoxGeometry(78, 54, 52), green, 0, 33, 0);
+  part(new THREE.BoxGeometry(84, 5, 56), lid, 0, 62, -6, -0.55);   // lid propped open
+  part(new THREE.BoxGeometry(82, 5, 4), lid, 0, 46, 28);            // front lip
+  for (const x of [-30, 30]) for (const z of [-18, 18]) {
+    const wh = new THREE.Mesh(G('binwheel', () => new THREE.CylinderGeometry(6, 6, 5, 10)), dark); wh.rotation.z = Math.PI / 2; wh.position.set(x, 6, z); g.add(wh);
+  }
+  const snowLid = part(new THREE.BoxGeometry(70, 4, 40), toon(SNOW), 0, 66, -10, -0.55);
+  snowLid.position.y += 2;
+  g.add(blob(3, 4, 100, 76));
+  return g;
+}
+function buildDrift(seed) {
+  const g = new THREE.Group();
+  const lumps = [[0, 0, 52, 0.62], [-34, 10, 34, 0.7], [30, -12, 36, 0.66], [8, 26, 28, 0.6], [-14, -28, 26, 0.6]];
+  lumps.forEach(([x, z, r, sy], i) => {
+    const m = new THREE.Mesh(G('lump', () => new THREE.SphereGeometry(1, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2)), toon(i % 2 ? SNOW_SHADE : SNOW));
+    m.scale.set(r, r * sy * 1.5, r); m.position.set(x, 0, z); m.userData.cover = true; g.add(m);
+  });
+  g.rotation.y = (seed * 1.3) % 6.28;
+  g.add(blob(4, 6, 150, 130));
+  return g;
+}
+function buildLamp() {
+  const g = new THREE.Group();
+  const iron = toon(0x2b3445);
+  g.add(mesh(G('lpole', () => new THREE.CylinderGeometry(2.5, 3.5, 120, 8)), iron, 0, 60, 0, true, 1.2));
+  g.add(mesh(G('lbase', () => new THREE.CylinderGeometry(7, 8, 10, 10)), iron, 0, 5, 0, true, 1.08));
+  g.add(mesh(G('lhead', () => new THREE.BoxGeometry(16, 20, 16)), lightMat, 0, 130, 0, true, 1.12));
+  g.add(mesh(G('lroof', () => new THREE.ConeGeometry(14, 10, 4)), iron, 0, 145, 0, true, 1.08));
+  g.add(mesh(G('lsnow', () => new THREE.ConeGeometry(11, 5, 4)), toon(SNOW), 0, 150, 0, false));
+  g.add(blob(0, 0, 30, 30));
+  return g;
+}
+function buildStall(seed) {
+  const T = villageTextures();
+  const g = new THREE.Group();
+  const wood = toon(WOOD), canopy = toon(0xffffff, { map: T.canopy[seed % 3] });
+  g.add(mesh(new THREE.BoxGeometry(104, 40, 40), toon(0xffffff, { map: WOOD_TEX }), 0, 20, 6, true, 1.03));
+  for (const x of [-48, 48]) for (const z of [-22, 22]) g.add(mesh(G('stpost', () => new THREE.BoxGeometry(5, 76, 5)), wood, x, 38, z, false));
+  const top = mesh(new THREE.BoxGeometry(116, 5, 64), canopy, 0, 80, 0, true, 1.03); top.rotation.x = 0.18; g.add(top);
+  const sn = mesh(new THREE.BoxGeometry(108, 4, 56), toon(SNOW), 0, 84, -1, false); sn.rotation.x = 0.18; g.add(sn);
+  const goods = [0xe2453c, 0xffc93c, 0x3a86ff, 0x7ac74f, 0xff70a6];
+  for (let i = 0; i < 7; i++) g.add(mesh(G('bauble', () => new THREE.SphereGeometry(4.5, 10, 8)), toon(goods[(i + seed) % goods.length]), -36 + i * 12, 45, 14, false));
+  g.add(blob(3, 4, 130, 70));
+  return g;
+}
+function buildDesk(teacher) {
+  const g = new THREE.Group();
+  const wood = toon(0xc98c52), legs = toon(0x39424f);
+  g.add(mesh(G('desktop', () => new THREE.BoxGeometry(56, 4, 36)), wood, 0, 28, 0, true, 1.06));
+  for (const x of [-24, 24]) for (const z of [-14, 14]) g.add(mesh(G('dleg', () => new THREE.BoxGeometry(3, 26, 3)), legs, x, 13, z, false));
+  if (teacher) {
+    g.add(mesh(G('apple', () => new THREE.SphereGeometry(4.5, 10, 8)), toon(0xe2453c), 14, 34, 4, true, 1.12));
+    g.add(mesh(G('books', () => new THREE.BoxGeometry(18, 7, 13)), toon(0x3a86ff), -12, 33, 0, true, 1.08));
+  } else g.add(mesh(G('chair', () => new THREE.BoxGeometry(22, 3, 18)), toon(0x3d8fb3), 0, 16, 26, false));
+  return g;
+}
+function buildHydrant() {
+  const g = new THREE.Group();
+  const red = toon(0xe2453c);
+  g.add(mesh(G('hyd', () => new THREE.CylinderGeometry(8, 9, 26, 10)), red, 0, 13, 0, true, 1.1));
+  g.add(mesh(G('hydtop', () => new THREE.SphereGeometry(8, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2)), red, 0, 26, 0, true, 1.1));
+  const nz = mesh(G('hydnz', () => new THREE.CylinderGeometry(3.5, 3.5, 24, 8)), red, 0, 16, 0, false); nz.rotation.z = Math.PI / 2; g.add(nz);
+  g.add(mesh(G('hydsnow', () => new THREE.SphereGeometry(6, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2)), toon(SNOW), 0, 32, 0, false));
+  g.add(blob(0, 0, 34, 34));
+  return g;
+}
+// The inside of the school and skate hut: floors, a chalkboard and the shop signs.
+function buildInteriors() {
+  const T = villageTextures();
+  const g = new THREE.Group();
+  const deck = toon(0xffffff, { map: T.plank });
+  for (const B of [F.extra.school, F.extra.hut]) {
+    if (!B) continue;
+    const fw = B.w - 24, fd = B.h - 24;
+    const geo = new THREE.PlaneGeometry(fw, fd).rotateX(-Math.PI / 2);
+    const uv = geo.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * fw / 64, uv.getY(i) * fd / 64);
+    const floor = new THREE.Mesh(geo, deck); floor.position.set(B.x + B.w / 2, 0.8, B.y + B.h / 2); g.add(floor);
+    g.add(gableRoof(B.w, B.h, B.top + 2, B === F.extra.school ? 56 : 44, B === F.extra.school ? '#3f6d9e' : '#6b4428', B === F.extra.school ? '#e8dccb' : '#8f5d36').translateX(B.x + B.w / 2).translateZ(B.y + B.h / 2));
+  }
+  const S = F.extra.school;
+  if (S) {
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(68, 42), new THREE.MeshBasicMaterial({ map: T.chalk }));
+    board.position.set(S.x + 180, 60, S.y + S.h - 12.6); board.rotation.y = Math.PI; g.add(board);
+  }
+  for (const s of F.SIGNS) {
+    const m = textSign(s.text, s.w, s.w / 4.2);
+    const out = 1.5;
+    if (s.face === 'S') m.position.set(s.x, s.z, s.y + out);
+    else if (s.face === 'N') { m.position.set(s.x, s.z, s.y - out); m.rotation.y = Math.PI; }
+    else if (s.face === 'W') { m.position.set(s.x - out, s.z, s.y); m.rotation.y = -Math.PI / 2; }
+    else { m.position.set(s.x + out, s.z, s.y); m.rotation.y = Math.PI / 2; }
+    g.add(m);
+  }
+  return g;
+}
+// Merge a cover group's see-through parts into one mesh per material, so a hiding spot is a few draw calls.
+function mergeCover(group) {
+  group.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
+  const buckets = new Map(), done = [];
+  group.traverse((m) => {
+    if (!m.isMesh || !m.userData.cover || Array.isArray(m.material)) return;
+    let geo = m.geometry.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld));
+    for (const name of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(name)) geo.deleteAttribute(name);
+    if (geo.index) geo = geo.toNonIndexed();
+    const b = buckets.get(m.material) || []; b.push(geo); buckets.set(m.material, b); done.push(m);
+  });
+  for (const m of done) if (m.parent) m.parent.remove(m);
+  for (const [mat, geos] of buckets) {
+    const geo = mergeGeometries(geos, false);
+    if (!geo) continue;
+    const mm = new THREE.Mesh(geo, mat); mm.userData.cover = true; group.add(mm);
+  }
+  return group;
+}
+
 function plusSprite(colour) {
   const c = document.createElement('canvas'); c.width = c.height = 64;
   const g = c.getContext('2d');
@@ -610,6 +1071,26 @@ function shieldSprite() {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 
+// The arena floor as a set of rectangles, leaving out the holes where the ground is open (the canal).
+function groundGeometry(W, H, holes) {
+  const xs = new Set([0, W]), ys = new Set([0, H]);
+  for (const [x, y, w, h] of holes) { xs.add(x); xs.add(x + w); ys.add(y); ys.add(y + h); }
+  const X = [...xs].sort((a, b) => a - b), Y = [...ys].sort((a, b) => a - b);
+  const pos = [], nor = [], uv = [];
+  const inHole = (x, y) => holes.some(([hx, hy, hw, hh]) => x > hx && x < hx + hw && y > hy && y < hy + hh);
+  for (let i = 0; i < X.length - 1; i++) for (let j = 0; j < Y.length - 1; j++) {
+    const x0 = X[i], x1 = X[i + 1], y0 = Y[j], y1 = Y[j + 1];
+    if (inHole((x0 + x1) / 2, (y0 + y1) / 2)) continue;
+    const quad = [[x0, y0], [x0, y1], [x1, y0], [x1, y0], [x0, y1], [x1, y1]];
+    for (const [x, y] of quad) { pos.push(x, 0, y); nor.push(0, 1, 0); uv.push(x / W, 1 - y / H); }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  return geo;
+}
+
 // ---------- the world ----------
 export class World3D {
   constructor(canvas) {
@@ -620,11 +1101,25 @@ export class World3D {
     this.pixelRatio = Math.min(weak ? 1 : 1.5, window.devicePixelRatio || 1);
     this.renderer.setPixelRatio(this.pixelRatio);
     this.frameTimes = []; this.lastQualityCheck = 0;
+    this.camera = new THREE.PerspectiveCamera(75, 1, 1, 6000);
+    this.ready = false;
+    this.loadSeq = 0;
+    this.mapId = null;
+    this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.resetScene();
+    this.buildViewmodel();
+  }
+
+  resetScene() {
+    if (this.scene) {
+      this.scene.remove(this.camera);
+      this.scene.traverse((m) => { if (m.isMesh || m.isPoints) m.geometry.dispose(); });
+      for (const k of Object.keys(geoCache)) delete geoCache[k];
+    }
     this.scene = new THREE.Scene();
     const sky = 0xcfe6f7;
     this.scene.background = new THREE.Color(sky);
     this.scene.fog = new THREE.Fog(sky, 700, 2600);
-    this.camera = new THREE.PerspectiveCamera(75, 1, 1, 6000);
     this.scene.add(this.camera);
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0xaec6de, 1.25));
     const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(-600, 1200, 400); this.scene.add(sun);
@@ -634,21 +1129,44 @@ export class World3D {
     this.particles = [];
     this.covers = [];
     this.fx = [];
-    this.ready = false;
-    this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.live = null;
+    this.snow = null;
   }
 
-  async init() {
+  // Build the 3D arena for a map (the current one if none is given). Safe to call again to switch maps.
+  async init(mapId) { return this.load(mapId || F.mapId); }
+  async load(mapId) {
+    const seq = ++this.loadSeq;
+    this.ready = false;
     await window.FFSprites.ready;
+    if (seq !== this.loadSeq) return false;
+    F.useMap(mapId);
+    this.resetScene();
+    this.mapId = F.mapId;
     WOOD_TEX = woodTex(); BIRCH_TEX = birchTex(); RINGS_TEX = ringsTex();
     this.buildGround();
     this.buildFenceBorder();
     for (const L of F.LODGES || []) this.scene.add(buildLodge(L));
+    if (F.HOUSES.length || F.extra.canal) {
+      this.scene.add(buildVillageBoxes());
+      for (const H of F.HOUSES) this.scene.add(buildHouse(H));
+      for (const r of F.RAMPS) if (r.kind) this.scene.add(buildRamp(r));
+      if (F.extra.canal) { this.scene.add(buildCanal()); this.live = buildCanalLive(this.scene); }
+      this.scene.add(buildInteriors());
+    }
     this.buildScenery();
     F.OBJECTS.forEach((o, i) => {
       let g;
       switch (o.k) {
-        case 'pine': g = buildPine(); break;
+        case 'pine': g = buildPine(); if (o.big) g.scale.setScalar(1.45); break;
+        case 'locker': g = buildLocker(); break;
+        case 'bin': g = buildBin(); break;
+        case 'drift': g = buildDrift(i); break;
+        case 'lamp': g = buildLamp(); break;
+        case 'stall': g = buildStall(i); break;
+        case 'desk': g = buildDesk(o.teacher); break;
+        case 'hydrant': g = buildHydrant(); break;
+        case 'crateS': g = buildCrate(!(o.z < 0)); g.scale.set(0.68, 0.7, 0.68); break; // no snow down in the canal
         case 'igloo': g = buildIgloo(o); break;
         case 'bare': g = buildBare(i); break;
         case 'mound': g = buildMound(true); break;
@@ -666,9 +1184,11 @@ export class World3D {
         case 'fenceV': g = buildFence(130, true); break;
         default: return;
       }
-      g.position.set(o.x, 0, o.y);
+      g.position.set(o.x, o.z || 0, o.y);
+      if (o.rot || o.rotY) g.rotation.y = o.rot || o.rotY;
       this.scene.add(g);
       if (F.KINDS[o.k].cover) {
+        mergeCover(g);
         const mats = [];
         g.traverse((m) => {
           if (m.isMesh && m.userData.cover) { m.material = m.material.clone(); m.material.transparent = true; mats.push(m.material); }
@@ -677,10 +1197,11 @@ export class World3D {
       }
     });
     this.mergeStatic();
-    this.buildViewmodel();
     if (!this.reducedMotion) this.buildSnowfall();
     await this.warmUp();
+    if (seq !== this.loadSeq) return false;
     this.ready = true;
+    return true;
   }
 
   // Bake every static, opaque mesh into one mesh per material: hundreds of draw calls become a few dozen.
@@ -738,12 +1259,14 @@ export class World3D {
     window.FFRender.drawGround(g);
     const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(F.MAP.width, F.MAP.height).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ map: tex }));
-    floor.position.set(F.MAP.width / 2, 0, F.MAP.height / 2);
+    const floor = new THREE.Mesh(groundGeometry(F.MAP.width, F.MAP.height, F.HOLES), new THREE.MeshLambertMaterial({ map: tex }));
     this.scene.add(floor);
-    const outside = new THREE.Mesh(new THREE.PlaneGeometry(12000, 12000).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0xe6eef6 }));
-    outside.position.set(F.MAP.width / 2, -0.5, F.MAP.height / 2);
-    this.scene.add(outside);
+    // snowy land beyond the fence (four strips, so nothing covers the canal)
+    const outMat = new THREE.MeshLambertMaterial({ color: 0xe6eef6 }), E = 6000, MW = F.MAP.width, MH = F.MAP.height;
+    for (const [x, y, w, h] of [[-E, -E, MW + 2 * E, E], [-E, MH, MW + 2 * E, E], [-E, 0, E, MH], [MW, 0, E, MH]]) {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h).rotateX(-Math.PI / 2), outMat);
+      m.position.set(x + w / 2, -0.5, y + h / 2); this.scene.add(m);
+    }
   }
 
   buildFenceBorder() {
@@ -976,7 +1499,7 @@ export class World3D {
     if (Math.abs(this.camera.fov - fov) > 0.05) { this.camera.fov += (fov - this.camera.fov) * Math.min(1, dt * 8); this.camera.updateProjectionMatrix(); }
 
     // trees and igloos fade when you're inside them, so you can see out
-    const inside = cam.alive ? F.coverAt(cam.x, cam.y) : -1;
+    const inside = cam.alive ? F.coverAt(cam.x, cam.y, cam.z) : -1;
     for (let i = 0; i < this.covers.length; i++) {
       const c = this.covers[i];
       const target = i === inside ? 0.12 : 1;
@@ -1012,8 +1535,10 @@ export class World3D {
       return true;
     });
 
+    if (this.live) for (const w of this.live.water) w.tex.offset.x -= w.speed * dt;
     if (this.snow) {
-      this.snow.position.set(cam.x, 0, cam.y);
+      this.snow.visible = F.ceilingAt(cam.x, cam.y, cam.z) === Infinity; // no snow under a roof or in the tunnel
+      this.snow.position.set(cam.x, cam.z, cam.y);
       const a = this.snow.geometry.attributes.position;
       for (let i = 0; i < a.count; i++) {
         let y = a.getY(i) - dt * 40; if (y < 0) y += 500;

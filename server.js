@@ -61,6 +61,7 @@ function cleanSettings(s = {}) {
     teams: !!s.teams,
     lateJoin: s.lateJoin !== false,
     pickups: s.pickups !== false,
+    map: FF.MAPS[s.map] ? s.map : 'meadow',
   };
 }
 
@@ -108,6 +109,7 @@ function createGame(hostSocket, settings, questions, title, modified = []) {
     createdAt: Date.now(),
     state: 'lobby',
     settings,
+    W: FF.world(settings.map), // this game's map: layout and collision
     // main and modified questions in one array; each pool lists the indexes it can serve
     questions: [...questions.map((q) => ({ ...q, list: 'main' })), ...modified.map((q) => ({ ...q, list: 'mod' }))],
     mainIdx: questions.map((_, k) => k),
@@ -153,7 +155,8 @@ function teamCounts(game) {
 }
 
 function spawnPlayer(game, p, now) {
-  const pool = game.settings.teams && p.team ? FF.SPAWNS[p.team] : FF.SPAWNS.any;
+  const W = game.W;
+  const pool = game.settings.teams && p.team ? W.SPAWNS[p.team] : W.SPAWNS.any;
   // Choose the spawn point furthest from living enemies.
   let best = pool[0], bestScore = -1;
   for (const s of shuffle(pool)) {
@@ -165,8 +168,8 @@ function spawnPlayer(game, p, now) {
     }
     if (minD > bestScore) { bestScore = minD; best = s; }
   }
-  const pos = FF.resolveCollisions(best.x + rand(-15, 15), best.y + rand(-15, 15), FF.PLAYER_RADIUS);
-  Object.assign(p, { x: pos.x, y: pos.y, z: 0, hp: FF.MAX_HP, alive: true, invulnUntil: now + FF.INVULN_MS, lastPosAt: now });
+  const pos = W.resolveCollisions(best.x + rand(-15, 15), best.y + rand(-15, 15), FF.PLAYER_RADIUS);
+  Object.assign(p, { x: pos.x, y: pos.y, z: W.groundAt(pos.x, pos.y, 0), hp: FF.MAX_HP, alive: true, invulnUntil: now + FF.INVULN_MS, lastPosAt: now });
   p.spawnSeq++;
 }
 
@@ -265,9 +268,9 @@ function knockOut(game, victim, attacker, now) {
   io.to(game.code).emit('ko', { victim: victim.pid, by: attacker ? attacker.pid : null, x: victim.x, y: victim.y });
 }
 
-// Is this player tucked inside a tree or igloo, and not given away recently?
-function inCover(p, now) {
-  return p.alive && now >= p.revealUntil && FF.coverAt(p.x, p.y) >= 0;
+// Is this player tucked inside a tree, igloo, locker, bin or snow pile, and not given away recently?
+function inCover(game, p, now) {
+  return p.alive && now >= p.revealUntil && game.W.coverAt(p.x, p.y, p.z) >= 0;
 }
 
 // Each player gets their own snapshot: enemies hiding in cover are left out
@@ -277,7 +280,7 @@ function sendSnapshots(game, now) {
   const rows = list.map((p) => [p.pid, Math.round(p.x), Math.round(p.y), p.hp, p.shield, p.alive ? 1 : 0,
     Math.round(p.angle * 100), now < p.invulnUntil ? 1 : 0, p.ammo, p.kos, p.spawnSeq, p.connected ? 1 : 0, 1,
     Math.round(p.z), Math.round(p.pitch * 100)]);
-  const hidden = list.map((p) => inCover(p, now));
+  const hidden = list.map((p) => inCover(game, p, now));
   const base = {
     t: game.endsAt - now,
     b: game.snowballs.map((b) => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.vx), Math.round(b.vy), Math.round(b.z), Math.round(b.vz)]),
@@ -311,7 +314,7 @@ function stepGame(game, dt, now) {
   for (const b of game.snowballs) {
     b.vz -= FF.SNOWBALL.gravity * dt;
     b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt; b.life -= dt;
-    let hit = b.life <= 0 || FF.blocked3D(b.x, b.y, b.z, FF.SNOWBALL.radius);
+    let hit = b.life <= 0 || game.W.blocked3D(b.x, b.y, b.z, FF.SNOWBALL.radius);
     if (!hit) {
       for (const p of game.players.values()) {
         if (!p.alive || p.pid === b.owner || !p.connected) continue;
@@ -340,7 +343,7 @@ function stepGame(game, dt, now) {
   if (game.settings.pickups && now >= game.nextPickupAt) {
     game.nextPickupAt = now + PICKUP_EVERY_MS;
     if (game.pickups.length < MAX_PICKUPS) {
-      const free = FF.PICKUP_SPOTS.filter((s) => !game.pickups.some((k) => k.x === s.x && k.y === s.y));
+      const free = game.W.PICKUP_SPOTS.filter((s) => !game.pickups.some((k) => k.x === s.x && k.y === s.y));
       if (free.length) {
         const s = free[Math.floor(Math.random() * free.length)];
         const types = ['shield', 'shield', 'cocoa', 'snow'];
@@ -492,7 +495,7 @@ io.on('connection', (socket) => {
     if (!game) return reply(cb, { ok: false, error: 'No game found with that code. Check the code on the board.' });
     if (game.state === 'ended') return reply(cb, { ok: false, error: 'That game has finished.' });
     if (game.state === 'playing' && !game.settings.lateJoin) return reply(cb, { ok: false, error: 'This game has already started.' });
-    reply(cb, { ok: true, title: game.title });
+    reply(cb, { ok: true, title: game.title, map: game.settings.map });
   });
 
   socket.on('player:join', (data = {}, cb) => {
@@ -543,9 +546,10 @@ io.on('connection', (socket) => {
     const dist = Math.hypot(dx, dy);
     const maxDist = FF.RUN_SPEED * elapsed * 1.5 + 25;
     if (dist > maxDist) { dx = (dx / dist) * maxDist; dy = (dy / dist) * maxDist; }
+    const W = game.W;
     const z = Number(data.z);
-    p.z = Number.isFinite(z) ? FF.clamp(z, 0, FF.highestFloorAt(x, y) + FF.JUMP_MAX + 4) : 0;
-    const pos = FF.resolveCollisions(p.x + dx, p.y + dy, FF.PLAYER_RADIUS, p.z);
+    p.z = Number.isFinite(z) ? FF.clamp(z, W.baseFloorAt(x, y), W.highestFloorAt(x, y) + FF.JUMP_MAX + 4) : W.groundAt(x, y, 0);
+    const pos = W.resolveCollisions(p.x + dx, p.y + dy, FF.PLAYER_RADIUS, p.z);
     p.x = pos.x; p.y = pos.y;
     if (Number.isFinite(Number(data.a))) p.angle = Number(data.a);
     if (Number.isFinite(Number(data.p))) p.pitch = FF.clamp(Number(data.p), -1.4, 1.4);

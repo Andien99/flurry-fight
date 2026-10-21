@@ -39,12 +39,29 @@
     const cx = F.clamp(x, bx + r, bx + w - r), cy = F.clamp(y, by + r, by + h - r);
     return (x - cx) ** 2 + (y - cy) ** 2 <= (r - 6) ** 2;
   });
-  const GRASS_PATH = blobPath(F.GRASS);
-  const POND_PATH = blobPath(F.PONDS);
-  const GRASS_TUFTS = pointsIn(F.GRASS, 70, inBlobs(F.GRASS));
-  const POND_MOTTLES = pointsIn(F.PONDS, 40, inBlobs(F.PONDS));
-  const DECOR = [[362, 200], [426, 164], [160, 462], [1104, 620], [560, 984], [1300, 420], [1690, 300], [96, 1010], [1260, 1240], [820, 300]]
-    .map(([x, y]) => [x + (F.SHIFT || 0), y]);
+  // Shapes worked out once per map (redone when the map changes).
+  let GRASS_PATH, POND_PATH, GRASS_TUFTS, POND_MOTTLES, DECOR, SOLIDS, COVERS, preparedFor = null;
+  function prepare() {
+    if (preparedFor === F.mapId) return;
+    preparedFor = F.mapId;
+    seed = 11;
+    GRASS_PATH = blobPath(F.GRASS);
+    POND_PATH = blobPath(F.PONDS);
+    GRASS_TUFTS = F.GRASS.length ? pointsIn(F.GRASS, 70, inBlobs(F.GRASS)) : [];
+    POND_MOTTLES = F.PONDS.length ? pointsIn(F.PONDS, 40, inBlobs(F.PONDS)) : [];
+    DECOR = F.DECOR;
+    // Static objects split into y-sorted solids and the cover layer drawn over players.
+    SOLIDS = []; COVERS = [];
+    F.OBJECTS.forEach((o) => {
+      const def = F.KINDS[o.k];
+      if (def.cover) { COVERS.push(o); return; }
+      let bottom = 0;
+      for (const [, dy, , h] of def.rects || []) bottom = Math.max(bottom, dy + h);
+      for (const [, dy, r] of def.circles || []) bottom = Math.max(bottom, dy + r * 0.6);
+      SOLIDS.push({ o, base: o.y + bottom });
+    });
+    COVERS.sort((a, b) => a.y - b.y);
+  }
 
   let snowTile = null;
   function groundPattern(ctx) {
@@ -64,7 +81,72 @@
     return ctx.createPattern(snowTile, 'repeat');
   }
 
-  function drawGround(ctx) {
+  // Cobbled streets (Snow Village)
+  let cobbleTile = null;
+  function cobblePattern(ctx) {
+    if (!cobbleTile) {
+      cobbleTile = document.createElement('canvas'); cobbleTile.width = cobbleTile.height = 48;
+      const t = cobbleTile.getContext('2d');
+      t.fillStyle = '#c9ccd3'; t.fillRect(0, 0, 48, 48);
+      t.strokeStyle = 'rgba(120,128,142,0.55)'; t.lineWidth = 1.5;
+      for (let r = 0; r < 4; r++) for (let i = 0; i < 4; i++) {
+        const x = i * 12 + (r % 2) * 6, y = r * 12;
+        t.fillStyle = (r + i) % 3 ? '#cfd2d8' : '#bfc4cc';
+        roundRect(t, x + 1, y + 1, 10, 10, 3); t.fill(); t.stroke();
+      }
+      t.fillStyle = 'rgba(255,255,255,0.75)';
+      for (const [x, y] of [[5, 7], [30, 20], [18, 40], [42, 33]]) { t.beginPath(); t.arc(x, y, 2.5, 0, Math.PI * 2); t.fill(); }
+    }
+    return ctx.createPattern(cobbleTile, 'repeat');
+  }
+
+  // The canal and its steps, seen from above (on the 2D maps only; the 3D view has the real thing).
+  function drawCanal(ctx) {
+    const c = F.extra && F.extra.canal;
+    if (!c) return;
+    const chY0 = 670, chY1 = 730;
+    const open = [[c.x, c.tunnel.x0], [c.tunnel.x1, c.x + c.w]];
+    ctx.save();
+    for (const [a, b] of open) {
+      ctx.fillStyle = '#8f98a6'; ctx.fillRect(a, c.y, b - a, c.h);                 // towpaths
+      ctx.fillStyle = '#a9daf5'; ctx.fillRect(Math.max(a, 380), chY0, Math.min(b, 2020) - Math.max(a, 380), chY1 - chY0); // frozen channel
+      ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 3;
+      for (let x = Math.max(a, 380) + 30; x < Math.min(b, 2020) - 20; x += 90) { ctx.beginPath(); ctx.moveTo(x, chY0 + 18); ctx.lineTo(x + 26, chY0 + 10); ctx.stroke(); }
+      ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.strokeRect(a, c.y, b - a, c.h);
+    }
+    // steps at the ends and the stairwells into the tunnel
+    for (const r of F.RAMPS) {
+      if (r.kind !== 'steps') continue;
+      const n = 8;
+      for (let i = 0; i < n; i++) {
+        const t0 = i / n, along = r.axis === 'y';
+        const c0 = r.a0 + (r.a1 - r.a0) * t0, sz = (r.a1 - r.a0) / n;
+        ctx.fillStyle = i % 2 ? '#b7bdc6' : '#cdd2d9';
+        if (along) ctx.fillRect(r.x, Math.min(c0, c0 + sz), r.w, Math.abs(sz) + 0.5);
+        else ctx.fillRect(Math.min(c0, c0 + sz), r.y, Math.abs(sz) + 0.5, r.h);
+      }
+      ctx.strokeStyle = INK; ctx.lineWidth = 2.5; ctx.strokeRect(r.x, r.y, r.w, r.h);
+    }
+    for (const y of [600, 770]) { ctx.fillStyle = '#8f98a6'; ctx.fillRect(c.well.x, y, c.well.w, 30); }
+    ctx.restore();
+  }
+  // The tunnel under the square: a dashed outline so the teacher can see where it runs.
+  function drawTunnel(ctx) {
+    const c = F.extra && F.extra.canal;
+    if (!c) return;
+    ctx.save();
+    ctx.fillStyle = 'rgba(43,62,99,0.14)'; ctx.fillRect(c.tunnel.x0, c.y, c.tunnel.x1 - c.tunnel.x0, c.h);
+    ctx.setLineDash([22, 14]); ctx.strokeStyle = 'rgba(43,62,99,0.75)'; ctx.lineWidth = 7;
+    ctx.strokeRect(c.tunnel.x0 + 4, c.y + 4, c.tunnel.x1 - c.tunnel.x0 - 8, c.h - 8);
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(43,62,99,0.8)'; ctx.font = '800 26px "Bricolage Grotesque", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('TUNNEL', c.tunnel.x0 + 62, c.y + c.h / 2); ctx.fillText('TUNNEL', c.tunnel.x1 - 62, c.y + c.h / 2);
+    ctx.restore();
+  }
+
+  // opts.map: draw map-only marks (the canal from above, the tunnel outline)
+  function drawGround(ctx, opts = {}) {
+    prepare();
     ctx.fillStyle = groundPattern(ctx);
     ctx.fillRect(0, 0, F.MAP.width, F.MAP.height);
     // grass under the groves
@@ -89,8 +171,88 @@
     ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 3;
     for (const [x, y, k] of POND_MOTTLES.slice(0, 14)) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 12 + k * 10, y - 6 - k * 4); ctx.stroke(); }
     ctx.restore();
+    if (F.ROADS.length) {
+      ctx.save();
+      ctx.fillStyle = cobblePattern(ctx);
+      for (const [x, y, w, h] of F.ROADS) { roundRect(ctx, x, y, w, h, 14); ctx.fill(); }
+      ctx.restore();
+    }
     for (const [x, y] of DECOR) SP.draw(ctx, 'tuft', x, y);
+    if (opts.map) { drawCanal(ctx); drawTunnel(ctx); }
   }
+
+  // ---------- village buildings (seen from above) ----------
+  function drawHouseRoof(ctx, H) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(70,100,140,0.22)'; roundRect(ctx, H.x + 8, H.y + 10, H.w, H.d, 6); ctx.fill();
+    if (H.tower) {
+      ctx.fillStyle = H.roof; ctx.fillRect(H.x, H.y, H.w, H.d);
+      ctx.fillStyle = 'rgba(0,0,0,0.15)'; ctx.beginPath(); ctx.moveTo(H.x + H.w / 2, H.y + H.d / 2); ctx.lineTo(H.x + H.w, H.y); ctx.lineTo(H.x + H.w, H.y + H.d); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = INK; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(H.x, H.y); ctx.lineTo(H.x + H.w, H.y + H.d); ctx.moveTo(H.x + H.w, H.y); ctx.lineTo(H.x, H.y + H.d); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(H.x + H.w / 2, H.y + H.d / 2, 12, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.lineWidth = 3; ctx.strokeRect(H.x, H.y, H.w, H.d);
+      ctx.restore(); return;
+    }
+    const alongX = H.ridge !== 'y';
+    ctx.fillStyle = H.roof; ctx.fillRect(H.x - 6, H.y - 6, H.w + 12, H.d + 12);
+    // the far slope is shaded; snow lies on both
+    ctx.fillStyle = 'rgba(0,0,0,0.16)';
+    if (alongX) ctx.fillRect(H.x - 6, H.y + H.d / 2, H.w + 12, H.d / 2 + 6); else ctx.fillRect(H.x + H.w / 2, H.y - 6, H.w / 2 + 6, H.d + 12);
+    // roof tiles: rows parallel to the ridge
+    ctx.strokeStyle = 'rgba(0,0,0,0.22)'; ctx.lineWidth = 2; ctx.beginPath();
+    if (alongX) for (let y = H.y; y < H.y + H.d; y += 14) { ctx.moveTo(H.x - 6, y); ctx.lineTo(H.x + H.w + 6, y); }
+    else for (let x = H.x; x < H.x + H.w; x += 14) { ctx.moveTo(x, H.y - 6); ctx.lineTo(x, H.y + H.d + 6); }
+    ctx.stroke();
+    // snow drifted along the ridge and in soft patches
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    if (alongX) { roundRect(ctx, H.x + 4, H.y + H.d / 2 - 16, H.w - 8, 32, 12); ctx.fill(); roundRect(ctx, H.x + H.w * 0.12, H.y + 6, H.w * 0.42, H.d * 0.22, 10); ctx.fill(); }
+    else { roundRect(ctx, H.x + H.w / 2 - 16, H.y + 4, 32, H.d - 8, 12); ctx.fill(); roundRect(ctx, H.x + 6, H.y + H.d * 0.5, H.w * 0.22, H.d * 0.38, 10); ctx.fill(); }
+    ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.strokeRect(H.x - 6, H.y - 6, H.w + 12, H.d + 12);
+    ctx.lineWidth = 2.5; ctx.beginPath();
+    if (alongX) { ctx.moveTo(H.x - 6, H.y + H.d / 2); ctx.lineTo(H.x + H.w + 6, H.y + H.d / 2); } else { ctx.moveTo(H.x + H.w / 2, H.y - 6); ctx.lineTo(H.x + H.w / 2, H.y + H.d + 6); }
+    ctx.stroke();
+    if (H.chimney) {
+      const cx = alongX ? H.x + H.w * 0.75 : H.x + H.w / 2 + H.w * 0.18, cy = alongX ? H.y + H.d / 2 - H.d * 0.18 : H.y + H.d * 0.25;
+      ctx.fillStyle = '#9b4a3a'; ctx.fillRect(cx - 9, cy - 9, 18, 18); ctx.strokeRect(cx - 9, cy - 9, 18, 18);
+      ctx.fillStyle = '#fff'; ctx.fillRect(cx - 6, cy - 6, 12, 5);
+    }
+    ctx.restore();
+  }
+  function drawVillage(ctx) {
+    // school and skate hut: floor plans, so you can see who's inside
+    for (const B of [F.extra.school, F.extra.hut]) {
+      if (!B) continue;
+      ctx.fillStyle = 'rgba(70,100,140,0.22)'; roundRect(ctx, B.x + 8, B.y + 10, B.w, B.h, 6); ctx.fill();
+      ctx.fillStyle = plankPattern(ctx); ctx.fillRect(B.x, B.y, B.w, B.h);
+    }
+    for (const [x, y, w, h, b, , kind] of F.BOXES) {
+      if ((kind === 'brick' || kind === 'logwall') && b === 0) {
+        ctx.fillStyle = kind === 'brick' ? '#b65a46' : '#8f5d36'; ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = INK; ctx.lineWidth = 1.5; ctx.strokeRect(x, y, w, h);
+      } else if ((kind === 'brick' || kind === 'logwall') && b > 0 && b < 80) {
+        ctx.fillStyle = '#d6ecff'; ctx.fillRect(x, y, w, h); // a window
+      } else if (kind === 'bridge') {
+        ctx.fillStyle = plankPattern(ctx); ctx.fillRect(x, y, w, h); ctx.strokeStyle = INK; ctx.lineWidth = 2.5; ctx.strokeRect(x, y, w, h);
+      } else if (kind === 'rail') {
+        ctx.fillStyle = b > 0 ? '#5c3a22' : '#39424f'; ctx.fillRect(x, y, w, h);
+      }
+    }
+    for (const r of F.RAMPS) {
+      if (r.kind !== 'bridge') continue;
+      ctx.fillStyle = '#c9a274'; ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeStyle = INK; ctx.lineWidth = 2.5; ctx.strokeRect(r.x, r.y, r.w, r.h);
+    }
+    for (const H of F.HOUSES) drawHouseRoof(ctx, H);
+    for (const s of F.SIGNS) {
+      ctx.fillStyle = '#6b4428'; const w = s.w * 0.9;
+      const x = s.face === 'W' ? s.x - 30 : s.x, y = s.face === 'S' ? s.y + 18 : s.y;
+      roundRect(ctx, x - w / 2, y - 11, w, 22, 6); ctx.fill();
+      ctx.fillStyle = '#ffe9b0'; ctx.font = '800 15px "Bricolage Grotesque", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(s.text, x, y + 1);
+    }
+  }
+
 
   function drawFenceTop(ctx) {
     for (let x = 0; x < F.MAP.width; x += 40) SP.draw(ctx, 'railH', x, -1);
@@ -100,18 +262,6 @@
     for (let x = 0; x < F.MAP.width; x += 40) SP.draw(ctx, 'railH', x, F.MAP.height - 28);
   }
 
-  // Static objects split into y-sorted solids and the cover layer drawn over players.
-  const SOLIDS = [];
-  const COVERS = [];
-  F.OBJECTS.forEach((o) => {
-    const def = F.KINDS[o.k];
-    if (def.cover) { COVERS.push(o); return; }
-    let bottom = 0;
-    for (const [, dy, , h] of def.rects || []) bottom = Math.max(bottom, dy + h);
-    for (const [, dy, r] of def.circles || []) bottom = Math.max(bottom, dy + r * 0.6);
-    SOLIDS.push({ o, base: o.y + bottom });
-  });
-  COVERS.sort((a, b) => a.y - b.y);
 
   // ---------- lodges (seen from above) ----------
   let plankTile = null;
@@ -197,6 +347,7 @@
     const hat = teams && info.team ? F.TEAM_COLOURS[info.team] : shade(colour, -0.35);
     const a = p.angle || 0;
     if (p.inv && Math.floor(now / 100) % 2 === 0) ctx.globalAlpha = 0.45;
+    else if ((p.z || 0) < -30) ctx.globalAlpha = 0.6; // down in the canal or the tunnel
     ctx.lineJoin = 'round';
     // ground ring (team colour) + shadow
     ctx.fillStyle = 'rgba(93,122,153,0.28)';
@@ -254,11 +405,12 @@
     ctx.fillRect(-2000, -2000, F.MAP.width + 4000, F.MAP.height + 4000);
     ctx.fillStyle = 'rgba(110,140,175,0.16)';
     ctx.fillRect(-2000, -2000, F.MAP.width + 4000, F.MAP.height + 4000);
-    drawGround(ctx);
+    drawGround(ctx, { map: true });
     ctx.save(); ctx.beginPath(); ctx.rect(0, -10, F.MAP.width, F.MAP.height + 20); ctx.clip();
     drawFenceTop(ctx);
     ctx.restore();
     drawLodges(ctx);
+    drawVillage(ctx);
     for (const k of world.pickups) drawPickup(ctx, k, now);
 
     // y-sorted solids and players
@@ -267,7 +419,7 @@
     for (const p of players) items.push({ base: p.y + F.PLAYER_RADIUS * 0.6, p });
     items.sort((a, b) => a.base - b.base);
     for (const it of items) {
-      if (it.o) SP.draw(ctx, it.o.k, it.o.x, it.o.y);
+      if (it.o) SP.draw(ctx, it.o.k, it.o.x, it.o.y, (it.o.z || 0) < -30 ? 0.7 : 1);
       else drawPlayer(ctx, it.p, world.roster.get(it.p.id) || {}, it.p.id === world.meId, world.teams, now);
     }
 
@@ -286,11 +438,12 @@
     const me = world.meId ? world.players.get(world.meId) : null;
     for (const o of COVERS) {
       const r = F.KINDS[o.k].cover;
-      const has = (p) => (p.x - o.x) ** 2 + (p.y - o.y) ** 2 < r * r;
+      const r2 = o.cover || r;
+      const has = (p) => Math.abs((p.z || 0) - (o.z || 0)) < 40 && (p.x - o.x) ** 2 + (p.y - o.y) ** 2 < r2 * r2;
       let alpha = 1;
       if (me && me.alive && has(me)) alpha = 0.4;
       else if (players.some(has)) alpha = world.spectator ? 0.5 : 0.7;
-      SP.draw(ctx, o.k, o.x, o.y, alpha);
+      SP.draw(ctx, o.k, o.x, o.y, alpha, o.big ? 1.45 : 1);
     }
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, F.MAP.width, F.MAP.height + 10); ctx.clip();
     drawFenceBottom(ctx);

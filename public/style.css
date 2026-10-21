@@ -285,6 +285,12 @@ label { font-weight: 700; display: block; margin-bottom: .3em; }
 .choice { display: flex; gap: 8px; }
 .choice button { flex: 1; box-shadow: none; border: 2px solid var(--frost); background: #fff; }
 .choice button[aria-pressed="true"] { border-color: var(--blue); background: #eef4ff; }
+.map-pick { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 6px 0 20px; }
+.map-pick button { display: grid; gap: 4px; justify-items: start; text-align: left; padding: 10px; box-shadow: none; border: 2px solid var(--frost); background: #fff; font-weight: 400; }
+.map-pick button[aria-pressed="true"] { border-color: var(--blue); background: #eef4ff; box-shadow: 0 0 0 2px var(--blue) inset; }
+.map-pick canvas { width: 100%; height: auto; aspect-ratio: 360 / 196; border-radius: var(--r-sm); background: #e6eef6; }
+.map-pick b { font: 800 1.05rem var(--display); margin-top: 4px; }
+.map-pick span { color: var(--muted); font-size: .9rem; }
 .help { color: var(--muted); font-size: .9rem; font-weight: 400; margin: .3em 0 0; }
 dialog { border: 0; border-radius: var(--r-lg); padding: 24px; width: min(720px, calc(100% - 32px)); }
 dialog::backdrop { background: rgba(27,42,74,.6); }

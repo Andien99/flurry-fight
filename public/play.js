@@ -125,6 +125,7 @@ import { World3D } from './world3d.js';
     socket.emit('game:check', { code }, (res) => {
       if (!res || !res.ok) { $('code-err').textContent = (res && res.error) || 'Could not reach the game.'; return; }
       S.code = code;
+      ensureMap(res.map); // start building the right arena while they make their character
       showCustomiser();
     });
   };
@@ -149,6 +150,7 @@ import { World3D } from './world3d.js';
       }
       S.code = payload.code; S.pid = res.pid; S.token = res.token; S.name = res.name; S.colour = res.colour;
       S.settings = res.settings;
+      ensureMap(res.settings.map);
       S.world.meId = res.pid;
       S.world.teams = !!res.settings.teams;
       sessionStorage.setItem(SESSION_KEY, JSON.stringify({ code: S.code, token: S.token }));
@@ -178,7 +180,7 @@ import { World3D } from './world3d.js';
 
   socket.on('roster', (r) => {
     S.world.roster = new Map(r.players.map((p) => [p.id, p]));
-    if (r.settings) { S.settings = r.settings; S.world.teams = !!r.settings.teams; }
+    if (r.settings) { S.settings = r.settings; S.world.teams = !!r.settings.teams; ensureMap(r.settings.map); }
     if (S.screen === 's-wait') {
       const list = $('wait-list');
       list.textContent = '';
@@ -206,7 +208,21 @@ import { World3D } from './world3d.js';
   // ---------- game (3D, first person) ----------
   const canvas = $('view');
   const world3d = new World3D(canvas);
-  const worldReady = world3d.init().then(() => { $('loading3d').hidden = true; });
+  // The arena is built while students join (the default map first); ensureMap switches to the teacher's choice.
+  let wantMap = F.mapId;
+  world3d.init(wantMap).then((done) => { if (done) $('loading3d').hidden = true; });
+  function ensureMap(id) {
+    if (!id || !F.MAPS[id] || id === wantMap) return;
+    wantMap = id;
+    F.useMap(id);
+    miniBase = bigBase = null;
+    $('loading3d').hidden = false;
+    world3d.load(id).then((done) => {
+      if (!done) return;
+      $('loading3d').hidden = true;
+      if (S.screen === 's-game') buildMinimapBase();
+    });
+  }
   if (/[?&]debug\b/.test(location.search)) { window.__flurry3d = world3d; window.__flurryState = S; window.__flurrySocket = socket; }
   const coarse = window.matchMedia('(pointer: coarse)').matches;
   const SENS = 0.0022;
@@ -393,9 +409,9 @@ import { World3D } from './world3d.js';
     if (!mine) return;
     const wasAlive = S.me.alive;
     if (mine.seq !== S.me.seq || (mine.alive && !wasAlive)) {
-      Object.assign(S.me, { x: mine.tx, y: mine.ty, z: 0, vx: 0, vy: 0, vz: 0, grounded: true, seq: mine.seq });
+      Object.assign(S.me, { x: mine.tx, y: mine.ty, z: mine.tz || 0, vx: 0, vy: 0, vz: 0, grounded: true, seq: mine.seq });
       if (!wasAlive || S.me.seq <= 1) S.me.yaw = Math.atan2(F.MAP.height / 2 - mine.ty, F.MAP.width / 2 - mine.tx); // face the middle
-    } else if (mine.alive && Math.hypot(mine.tx - S.me.x, mine.ty - S.me.y) > 160) { S.me.x = mine.tx; S.me.y = mine.ty; }
+    } else if (mine.alive && Math.hypot(mine.tx - S.me.x, mine.ty - S.me.y) > 160) { S.me.x = mine.tx; S.me.y = mine.ty; S.me.z = mine.tz || 0; S.me.vz = 0; }
     S.me.alive = mine.alive;
     if (now - S.lastThrow > 400) S.me.ammo = mine.ammo;
     if (mine.hp < (S.me.hp ?? 100) && wasAlive) flashDamage();
@@ -556,13 +572,16 @@ import { World3D } from './world3d.js';
       const speed = running ? F.RUN_SPEED : F.PLAYER_SPEED;
       const cos = Math.cos(me.yaw), sin = Math.sin(me.yaw);
       const n = len > 1 ? 1 / len : 1;
-      const tx = (cos * fwd - sin * side) * n * speed, ty = (sin * fwd + cos * side) * n * speed;
-      // snow gives grip, ponds make you slide, and you can't steer much in the air
-      const grip = !me.grounded ? 3 : me.z < 1 && F.onIce(me.x, me.y) ? 2.2 : 22;
+      let tx = (cos * fwd - sin * side) * n * speed, ty = (sin * fwd + cos * side) * n * speed;
+      // wading through the tunnel's water: slower, and the current carries you along
+      const water = me.grounded ? F.waterAt(me.x, me.y, me.z) : null;
+      if (water) { tx = tx * water.slow + water.fx; ty = ty * water.slow + water.fy; }
+      // snow gives grip, ice makes you slide, and you can't steer much in the air
+      const grip = !me.grounded ? 3 : F.onIce(me.x, me.y, me.z) ? 2.2 : water ? 8 : 22;
       const kk = Math.min(1, grip * dt);
       me.vx += (tx - me.vx) * kk; me.vy += (ty - me.vy) * kk;
       const sp = Math.hypot(me.vx, me.vy);
-      if (sp > 1) {
+      if (sp > 1 || water) {
         const ox = me.x, oy = me.y;
         // step up onto stairs before checking walls, so the stairs don't count as a wall
         const stepTo = F.groundAt(ox + me.vx * dt, oy + me.vy * dt, me.z);
@@ -637,7 +656,7 @@ import { World3D } from './world3d.js';
     $('m-q').classList.toggle('pulse', ammo === 0 && S.me.alive && S.mode === 'throw');
     drawPortrait(now);
 
-    $('hidden-chip').hidden = !(S.me.alive && now > S.revealUntil && F.coverAt(S.me.x, S.me.y) >= 0);
+    $('hidden-chip').hidden = !(S.me.alive && now > S.revealUntil && F.coverAt(S.me.x, S.me.y, S.me.z) >= 0);
     const ko = $('ko');
     const dead = !S.me.alive && S.deadAt && now - S.deadAt < F.RESPAWN_MS + 1500;
     ko.hidden = !dead;

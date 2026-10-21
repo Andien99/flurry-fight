@@ -4,7 +4,8 @@
   "description": "A live classroom snowball-fight quiz game",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node test/physics.test.js && node test/bots.test.js village 8 15 && node test/bots.test.js meadow 6 10"
   },
   "keywords": [],
   "author": "",

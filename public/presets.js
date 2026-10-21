@@ -10,7 +10,7 @@
 
   const ALGEBRA_7 = {
     id: 'preset-y7-algebra-pretest',
-    version: 2, // bump when the questions change so saved copies are refreshed
+    version: 3, // bump when the questions change so saved copies are refreshed
     title: 'Year 7 Algebra: core skills',
     description: 'Like terms, collecting like terms, constants, coefficients and number of terms, substitution and equivalent expressions. Includes a modified list with simpler questions for students who need it.',
     questions: [
@@ -59,7 +59,6 @@
       mc(S, 'If $x = 2$ and $y = 7$, the value of $3x^{2} + y$ is:', '19', '43', '13', '25'),
       tx(S, 'If $a = 6$ and $b = 3$, evaluate $2a + 5b$.', '27'),
       tx(S, 'If $a = 6$ and $b = 3$, evaluate $ab - a$.', '12'),
-      tx(S, 'If $a = 6$ and $b = 3$, evaluate $3(a - b) + b^{2}$.', '18'),
       mc(S, 'If $m = 3$ and $n = 4$, the value of $mn + n$ is:', '16', '11', '38', '19'),
 
       // Equivalent expressions
@@ -67,10 +66,6 @@
       mc(E, 'Which expression is equivalent to $5a + 2a$?', '$7a$', '$7a^{2}$', '$10a$', '$5a + 2$'),
       mc(E, 'Which expression is equivalent to $x \\times y \\times 3$?', '$3xy$', '$x + y + 3$', '$3x + y$', '$xy^{3}$'),
       mc(E, 'Which expression is NOT equivalent to $4n$?', '$n + 4$', '$2n + 2n$', '$n \\times 4$', '$5n - n$'),
-      mc(E, 'Which expression is equivalent to $3(x + 2)$?', '$3x + 6$', '$3x + 2$', '$x + 6$', '$5x$'),
-      mc(E, 'Which expression is equivalent to $(y + 3) \\times 4$?', '$4y + 12$', '$4y + 3$', '$y + 12$', '$12y$'),
-      mc(E, 'Which expression is equivalent to $2(3m + 1)$?', '$6m + 2$', '$6m + 1$', '$5m + 2$', '$3m + 2$'),
-      mc(E, 'Which two expressions are equivalent?', '$2x + 8$ and $2(x + 4)$', '$2x + 4$ and $2(x + 4)$', '$x + 4$ and $4x$', '$8x$ and $2x + 8$'),
     ],
     // Modified list: the same skills with smaller numbers, fewer terms, three options and a reminder in the question.
     modified: [
@@ -112,7 +107,6 @@
       mc(E, 'Which is equivalent to $a + a$?', '$2a$', '$a^{2}$', '$a + 2$'),
       mc(E, 'Which is equivalent to $4y$?', '$2y + 2y$', '$4 + y$', '$y^{4}$'),
       mc(E, 'Which is equivalent to $x + x + x$?', '$3x$', '$x^{3}$', '$x + 3$'),
-      mc(E, 'Which is equivalent to $2 \\times (x + 1)$?', '$2x + 2$', '$2x + 1$', '$x + 3$'),
     ],
   };
 

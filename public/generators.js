@@ -88,16 +88,13 @@
         () => [`the product of ${M(u)} and ${a}`, `${a}${u}`, [`${a}${u}`], [`${u} + ${a}`, `\\frac{${u}}{${a}}`, `${u}^{${a}}`]],
         () => [`${a} less than ${M(u)}`, `${u} - ${a}`, [`${u}-${a}`], [`${a} - ${u}`, `${u} + ${a}`, `${a}${u}`]],
         () => [`${a} more than ${M(u)}`, `${u} + ${a}`, [`${u}+${a}`], [`${u} - ${a}`, `${a}${u}`, `${a} - ${u}`]],
-        () => [`${M(u)} is doubled, then ${a} is subtracted`, `2${u} - ${a}`, [`2${u}-${a}`], [`2(${u} - ${a})`, `${u} - 2 \\times ${a}`, `2${u} + ${a}`]],
-        () => [`${a} is added to ${M(u)}, and the result is multiplied by ${b}`, `${b}(${u} + ${a})`, [`${b}(${u}+${a})`, `${b}${u}+${b * a}`], [`${b}${u} + ${a}`, `${u} + ${b * a}`, `${b} + ${u} + ${a}`]],
-        () => [`${M(u)} is multiplied by ${b}, then ${a} is added`, `${b}${u} + ${a}`, [`${b}${u}+${a}`], [`${b}(${u} + ${a})`, `${u} + ${a * b}`, `${a}${u} + ${b}`]],
-        () => [`the sum of ${M(u)} and ${M(v)} is divided by ${b}`, `\\frac{${u} + ${v}}{${b}}`, [`(${u}+${v})/${b}`], [`${u} + \\frac{${v}}{${b}}`, `\\frac{${u}}{${b}} + ${v}`, `${b}(${u} + ${v})`]],
+        () => [`${M(u)} is doubled, then ${a} is subtracted`, `2${u} - ${a}`, [`2${u}-${a}`], [`${a} - 2${u}`, `${u} - 2 \\times ${a}`, `2${u} + ${a}`]],
+        () => [`${M(u)} is multiplied by ${b}, then ${a} is added`, `${b}${u} + ${a}`, [`${b}${u}+${a}`], [`${b} + ${u} + ${a}`, `${u} + ${a * b}`, `${a}${u} + ${b}`]],
         () => [`${M(u)} is divided by ${b}`, `\\frac{${u}}{${b}}`, [`${u}/${b}`], [`\\frac{${b}}{${u}}`, `${b}${u}`, `${u} - ${b}`]],
       ];
       if (level > 1) T.push(
         () => [`the square of ${M(u)}`, `${u}^{2}`, [`${u}^2`], [`2${u}`, `${u} + 2`, `${u} \\times 2`]],
-        () => [`${M(u)} is squared, then ${a} is added`, `${u}^{2} + ${a}`, [`${u}^2+${a}`], [`(${u} + ${a})^{2}`, `2${u} + ${a}`, `${u} + ${a}^{2}`]],
-        () => [`${b} times the sum of ${M(u)} and ${M(v)}`, `${b}(${u} + ${v})`, [`${b}(${u}+${v})`, `${b}${u}+${b}${v}`], [`${b}${u} + ${v}`, `${u} + ${b}${v}`, `${b} + ${u} + ${v}`]],
+        () => [`${M(u)} is squared, then ${a} is added`, `${u}^{2} + ${a}`, [`${u}^2+${a}`], [`${u}^{2} - ${a}`, `2${u} + ${a}`, `${u} + ${a}^{2}`]],
       );
       const [words, ans, accept, wrong] = pick(T)();
       const q = Math.random() < 0.5 ? `Which expression means "${words}"?` : `Write an expression for: ${words}.`;
@@ -116,7 +113,6 @@
         () => { const k = v * ri(2, 6); return [`\\frac{${k}}{${u}} + ${u}`, k / v + v, [k / v, (k + v) / v, k - v + v * 0, k / v + 1]]; },
       ];
       if (level > 1) forms.push(
-        () => [`${a}(${u} + ${b})`, a * (v + b), [a * v + b, a + v + b, a * b + v]],
         () => { const bb = Math.min(b, v * v - 1); return [`${u}^{2} - ${bb}`, v * v - bb, [2 * v - bb, (v - bb) ** 2, v * v + bb]]; },
         () => [`${a}${u}^{2}`, a * v * v, [(a * v) ** 2, 2 * a * v, a * v + 2]],
       );
@@ -140,7 +136,6 @@
         () => [`${u}${w} + ${a}`, x * y + a, [x + y + a, Number(`${x}${y}`) + a, x * (y + a)]],
       ];
       if (level > 1) forms.push(
-        () => [`${a}(${u} + ${w}) - ${w}^{2}`, a * (x + y) - y * y, [a * x + y - y * y, a * (x + y) - 2 * y, a * (x + y) + y * y]],
         () => {
           const [p, c, r] = pick([[3, 16, 5], [4, 9, 5], [6, 64, 10], [8, 36, 10], [5, 144, 13], [12, 25, 13]]);
           return [`\\sqrt{${u}^{2} + ${c}}`, r, [p + Math.sqrt(c), p * p + c, p + c], { [u]: p }];
@@ -215,14 +210,10 @@
     id: 'alg-equiv', name: 'Equivalent expressions',
     gen(level) {
       const u = pick(LETTERS), a = ri(2, 9), b = ri(2, 5), n = ri(3, 9), val = ri(2, 6);
-      const kinds = ['bracket', 'times', 'value', 'pair'];
+      const kinds = ['times', 'product', 'not', 'pair'];
       if (level > 1) kinds.push('check');
       const kind = pick(kinds);
       const s = this.name;
-      if (kind === 'bracket') {
-        const shown = Math.random() < 0.5 ? `(${u} + ${a}) \\times ${b}` : `${b}(${u} + ${a})`;
-        return { skill: s, q: `Which expression is equivalent to ${M(shown)}?`, answer: M(`${b}${u} + ${a * b}`), accept: [`${b}${u}+${a * b}`], distractors: [M(`${b}${u} + ${a}`), M(`${u} + ${a * b}`), M(`${a * b}${u}`)] };
-      }
       if (kind === 'times') {
         const p = ri(1, n - 1);
         return {
@@ -230,15 +221,22 @@
           distractors: [M(`${u} + ${n}`), M(n <= 5 ? Array(n).fill(u).join(' \\times ') : `${u}^{${n}}`), M(one1(`${p}${u} + ${n - p}`))],
         };
       }
-      if (kind === 'value') {
-        const ans = b * (val + a);
-        return { skill: s, q: `When ${M(`${u} = ${val}`)}, what is the value of ${M(`${b}(${u} + ${a})`)}?`, answer: n2s(ans), accept: [n2s(ans)], distractors: numDistractors(ans, [b * val + a, b + val + a, b * a + val]).map(n2s) };
+      if (kind === 'product') {
+        const shown = Math.random() < 0.5 ? `${u} \\times ${b}` : `${b} \\times ${u}`;
+        return { skill: s, q: `Which expression is equivalent to ${M(shown)}?`, answer: M(`${b}${u}`), accept: [`${b}${u}`], distractors: [M(`${u} + ${b}`), M(`${u}^{${b}}`), M(`${b + 1}${u}`)] };
+      }
+      if (kind === 'not') {
+        const p = ri(1, n - 1), q = ri(1, 4);
+        return {
+          skill: s, mcOnly: true, q: `Which expression is NOT equivalent to ${M(`${n}${u}`)}?`, answer: M(`${u} + ${n}`),
+          distractors: [M(one1(`${p}${u} + ${n - p}${u}`)), M(`${u} \\times ${n}`), M(one1(`${n + q}${u} - ${q}${u}`))],
+        };
       }
       if (kind === 'pair') {
         const pr = (x, y) => `${M(x)} and ${M(y)}`;
         return {
-          skill: s, mcOnly: true, q: 'Which two expressions are equivalent?', answer: pr(`${b}${u} + ${a * b}`, `${b}(${u} + ${a})`),
-          distractors: [pr(`${b}${u} + ${a}`, `${b}(${u} + ${a})`), pr(`${u} + ${a}`, `${a}${u}`), pr(`${a * b}${u}`, `${b}${u} + ${a * b}`)],
+          skill: s, mcOnly: true, q: 'Which two expressions are equivalent?', answer: pr(`${a}${u} + ${b}${u}`, `${a + b}${u}`),
+          distractors: [pr(`${a}${u} + ${b}`, `${a + b}${u}`), pr(`${u} + ${u}`, `${u}^{2}`), pr(`${a}${u}`, `${u} + ${a}`)],
         };
       }
       const p = ri(2, 7), q2 = ri(2, 9), w = ri(2, 5);
@@ -308,7 +306,7 @@
         };
       }
       const r = ri(2, 9);
-      const rect = `A rectangle has a length of ${M(`(x + ${r})`)} cm and a width of ${M('x')} cm.`;
+      const rect = `A rectangle has a length of ${M(`x + ${r}`)} cm and a width of ${M('x')} cm.`;
       if (kind === 'rect-p') {
         return { skill: s, q: `${rect} Write a simplified expression for its perimeter.`, answer: M(`4x + ${2 * r}`), accept: [`4x+${2 * r}`], distractors: [M(`2x + ${r}`), M(`4x + ${r}`), M(`2x + ${2 * r}`)] };
       }

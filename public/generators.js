@@ -57,7 +57,7 @@
       const cu = ri(2, 9), cv = level > 1 ? pick([1, ri(2, 9)]) : pick([1, 1, ri(2, 9)]), cuv = pick([1, ri(2, 9)]), k = ri(2, 15);
       const sub = level > 1 && Math.random() < 0.6;
       const terms = shuffle([{ c: cu, v: u }, { c: sub ? -cv : cv, v }, { c: cuv, v: u + v }]);
-      if (level > 1 && Math.random() < 0.4) terms.push({ c: ri(2, 6), v: u + '^2' });
+      if (level > 1 && Math.random() < 0.4) terms.push({ c: 1, v: u + '^2' });
       terms.push({ c: k, v: '' });
       const ex = M(exprTex(terms));
       const all = terms.map((t) => t.c);
@@ -109,16 +109,15 @@
       const forms = [
         () => [`${a}${u} + ${b}`, a * v + b, [Number(`${a}${v}`) + b, a + v + b, a * (v + b), a * v - b]],
         () => { const bb = Math.min(b, a * v - 1); return [`${a}${u} - ${bb}`, a * v - bb, [Number(`${a}${v}`) - bb, a * v + bb, a - v + bb, a * (v - bb)]]; },
-        () => [`${u}^{2} + ${b}`, v * v + b, [2 * v + b, (v + b) ** 2, v + b, v * v]],
+        () => { const sv = Math.min(v, 10); return [`${u}^{2} + ${b}`, sv * sv + b, [2 * sv + b, (sv + b) ** 2, sv + b, sv * sv], sv]; },
         () => { const k = v * ri(2, 6); return [`\\frac{${k}}{${u}} + ${u}`, k / v + v, [k / v, (k + v) / v, k - v + v * 0, k / v + 1]]; },
       ];
       if (level > 1) forms.push(
-        () => { const bb = Math.min(b, v * v - 1); return [`${u}^{2} - ${bb}`, v * v - bb, [2 * v - bb, (v - bb) ** 2, v * v + bb]]; },
-        () => [`${a}${u}^{2}`, a * v * v, [(a * v) ** 2, 2 * a * v, a * v + 2]],
+        () => { const sv = Math.min(v, 10), bb = Math.min(b, sv * sv - 1); return [`${u}^{2} - ${bb}`, sv * sv - bb, [2 * sv - bb, (sv - bb) ** 2, sv * sv + bb], sv]; },
       );
-      const [ex, ans, ideas] = pick(forms)();
+      const [ex, ans, ideas, sv] = pick(forms)();
       return {
-        skill: this.name, q: `If ${M(`${u} = ${v}`)}, what is the value of ${M(ex)}?`,
+        skill: this.name, q: `If ${M(`${u} = ${sv ?? v}`)}, what is the value of ${M(ex)}?`,
         answer: n2s(ans), accept: [n2s(ans)], distractors: numDistractors(ans, ideas).map(n2s),
       };
     },
@@ -132,17 +131,11 @@
       const forms = [
         () => [`${a}${u} + ${b}${w}`, a * x + b * y, [a * x + b + y, (a + b) * (x + y), a + x + b + y]],
         () => [`${u}${w} - ${w}`, x * y - y, [x * y, x - y * y, x * y + y]],
-        () => [`${a}${u}^{2} + ${w}`, a * x * x + y, [(a * x) ** 2 + y, 2 * a * x + y, a * x + y]],
+        () => [`${u}^{2} + ${w}`, x * x + y, [2 * x + y, (x + y) ** 2, x + y]],
         () => [`${u}${w} + ${a}`, x * y + a, [x + y + a, Number(`${x}${y}`) + a, x * (y + a)]],
       ];
-      if (level > 1) forms.push(
-        () => {
-          const [p, c, r] = pick([[3, 16, 5], [4, 9, 5], [6, 64, 10], [8, 36, 10], [5, 144, 13], [12, 25, 13]]);
-          return [`\\sqrt{${u}^{2} + ${c}}`, r, [p + Math.sqrt(c), p * p + c, p + c], { [u]: p }];
-        },
-      );
-      const [ex, ans, ideas, fixed] = pick(forms)();
-      const given = fixed ? M(`${u} = ${fixed[u]}`) : `${M(`${u} = ${x}`)} and ${M(`${w} = ${y}`)}`;
+      const [ex, ans, ideas] = pick(forms)();
+      const given = `${M(`${u} = ${x}`)} and ${M(`${w} = ${y}`)}`;
       return {
         skill: this.name, q: `If ${given}, what is the value of ${M(ex)}?`,
         answer: n2s(ans), accept: [n2s(ans)], distractors: numDistractors(ans, ideas).map(n2s),
@@ -265,7 +258,7 @@
       if (kind === 'write') {
         return { skill: this.name, q: `Write ${M(rep('n'))} in its simplest form.`, answer: M(`${k}n`), accept: [`${k}n`], distractors: [M(`n^{${k}}`), M(`n + ${k}`), M(`${k + 1}n`)] };
       }
-      const j = ri(2, 4);
+      const j = 2;
       return { skill: this.name, q: `Write ${M(Array(j).fill('n').join(' \\times '))} using a power.`, answer: M(`n^{${j}}`), accept: [`n^${j}`], distractors: [M(`${j}n`), M(`n + ${j}`), M(`${j}^{n}`)] };
     },
   });

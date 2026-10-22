@@ -10,7 +10,7 @@
 
   const ALGEBRA_7 = {
     id: 'preset-y7-algebra-pretest',
-    version: 3, // bump when the questions change so saved copies are refreshed
+    version: 4, // bump when the questions change so saved copies are refreshed
     title: 'Year 7 Algebra: core skills',
     description: 'Like terms, collecting like terms, constants, coefficients and number of terms, substitution and equivalent expressions. Includes a modified list with simpler questions for students who need it.',
     questions: [
@@ -19,10 +19,10 @@
       mc(L, 'Which term is a like term to $7k$?', '$3k$', '$7m$', '$7k^{2}$', '$7km$'),
       mc(L, 'Which pair are NOT like terms?', '$2b$ and $2b^{2}$', '$4c$ and $c$', '$3gh$ and $hg$', '$9$ and $1$'),
       mc(L, 'Which of the following is a pair of like terms?', '$8pq$ and $qp$', '$8p$ and $8q$', '$8pq$ and $8p$', '$p^{2}$ and $2p$'),
-      mc(L, 'Which term is a like term to $4a^{2}$?', '$-a^{2}$', '$4a$', '$2a^{3}$', '$a^{2}b$'),
-      mc(L, 'Which term is a like term to $3mn$?', '$-5nm$', '$3m$', '$3n$', '$3m^{2}n$'),
+      mc(L, 'Which term is a like term to $4a^{2}$?', '$-a^{2}$', '$4a$', '$4b^{2}$', '$4$'),
+      mc(L, 'Which term is a like term to $3mn$?', '$-5nm$', '$3m$', '$3n$', '$3m^{2}$'),
       mc(L, 'In $6x + 2y - 3x + 5$, which term is a like term to $6x$?', '$-3x$', '$2y$', '$5$', '$6$'),
-      mc(L, 'Which list contains only like terms?', '$2t$, $-t$, $9t$', '$2t$, $2s$, $2$', '$t$, $t^{2}$, $t^{3}$', '$3t$, $3ts$, $3s$'),
+      mc(L, 'Which list contains only like terms?', '$2t$, $-t$, $9t$', '$2t$, $2s$, $2$', '$t$, $t^{2}$, $2t$', '$3t$, $3ts$, $3s$'),
 
       // Collecting like terms
       tx(C, 'Simplify $3x + 5x$.', '8x'),
@@ -56,7 +56,7 @@
       tx(S, 'If $n = 8$, evaluate $\\frac{40}{n} + n$.', '13'),
       tx(S, 'If $p = 7$, evaluate $p^{2} - 9$.', '40'),
       mc(S, 'If $a = 3$, the value of $a^{2} + 4$ is:', '13', '10', '7', '49'),
-      mc(S, 'If $x = 2$ and $y = 7$, the value of $3x^{2} + y$ is:', '19', '43', '13', '25'),
+      mc(S, 'If $x = 3$ and $y = 5$, the value of $x^{2} + y$ is:', '14', '11', '8', '64'),
       tx(S, 'If $a = 6$ and $b = 3$, evaluate $2a + 5b$.', '27'),
       tx(S, 'If $a = 6$ and $b = 3$, evaluate $ab - a$.', '12'),
       mc(S, 'If $m = 3$ and $n = 4$, the value of $mn + n$ is:', '16', '11', '38', '19'),

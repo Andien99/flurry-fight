@@ -57,7 +57,7 @@ The map layout and collision live in `public/shared.js` (one `buildWorld` per ma
 
 ## Question sets
 
-Sets are saved in the teacher's browser (use **Export** to keep a `.json` copy or move it to another computer). **Starter sets** adds ready-made sets, including *Year 7 Algebra: core skills*. It has 43 questions on identifying like terms, collecting like terms, constants, coefficients and number of terms, substitution, and equivalent expressions, plus a 29-question modified list. It leaves out brackets (expanding and grouping), as do the Year 7 Algebra skill generators. Copies of the starter set saved before an update refresh themselves automatically.
+Sets are saved in the teacher's browser (use **Export** to keep a `.json` copy or move it to another computer). **Starter sets** adds ready-made sets, including *Year 7 Algebra: core skills*. It has 43 questions on identifying like terms, collecting like terms, constants, coefficients and number of terms, substitution, and equivalent expressions, plus a 29-question modified list. It leaves out brackets (expanding and grouping) and keeps squares simple (no harder than $a^2 + 4$; no square roots), as do the Year 7 Algebra skill generators. Copies of the starter set saved before an update refresh themselves automatically.
 
 There are four ways to add questions:
 

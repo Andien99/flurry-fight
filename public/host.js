@@ -650,7 +650,7 @@
       ['Write an expression for 3 less than $k$ (typed answer: leave wrong answers empty)', 'k-3', '', '', '', '', 'Writing expressions'],
     ];
     const cell = (v) => `"${String(v).replace(/"/g, '""')}"`;
-    download('flurry-fight-question-template.csv', '﻿' + rows.map((r) => r.map(cell).join(',')).join('\r\n'), 'text/csv');
+    download('snowdown-question-template.csv', '﻿' + rows.map((r) => r.map(cell).join(',')).join('\r\n'), 'text/csv');
   };
 
   // ---------- paste a list ----------
@@ -820,6 +820,12 @@
     const now = performance.now();
     R.burst(G.world, e.x, e.y, '#ffffff', 22, 70, 7, now);
     G.world.particles.push({ kind: 'text', text: 'KO!', x: e.x, y: e.y - 20, colour: '#ffc93c', t0: now, life: 900 });
+    // on a roll: call out each new tier over the thrower on the projected map
+    const tier = e.by && F.rollTier(e.run || 0);
+    const attacker = e.by && G.world.players.get(e.by);
+    if (tier && tier.n === e.run && attacker && attacker.x != null) {
+      G.world.particles.push({ kind: 'text', text: tier.name + '!', x: attacker.x, y: attacker.y - 46, colour: e.run >= 5 ? '#ffc93c' : '#8fe3ff', t0: now, life: 1600 });
+    }
   });
   socket.on('splat', (e) => R.burst(G.world, e.x, e.y, '#ffffff', 7, 26, 3.5, performance.now()));
   socket.on('hit', (e) => { const p = G.world.players.get(e.pid); if (p) p.hitAt = performance.now(); });
@@ -951,8 +957,8 @@
   $('csv').onclick = () => {
     const res = G.results; if (!res) return;
     const cell = (v) => `"${String(v).replace(/"/g, '""')}"`;
-    const lines = [['Player', 'Team', 'Question list', 'Knockouts', 'Times knocked out', 'Correct', 'Attempted', 'Accuracy %'].map(cell).join(',')];
-    for (const p of res.players) lines.push([p.name, p.team || '', p.mod ? 'Modified' : 'Main', p.kos, p.deaths, p.correct, p.attempted, p.attempted ? Math.round(100 * p.correct / p.attempted) : ''].map(cell).join(','));
+    const lines = [['Player', 'Team', 'Question list', 'Knockouts', 'Most knockouts in a row', 'Times knocked out', 'Correct', 'Attempted', 'Accuracy %'].map(cell).join(',')];
+    for (const p of res.players) lines.push([p.name, p.team || '', p.mod ? 'Modified' : 'Main', p.kos, p.bestRun || 0, p.deaths, p.correct, p.attempted, p.attempted ? Math.round(100 * p.correct / p.attempted) : ''].map(cell).join(','));
     lines.push('', ['Question', 'List', 'Skill', 'Attempts', 'Correct', 'Accuracy %'].map(cell).join(','));
     for (const q of res.questions) lines.push([q.q.replace(/\\\$/g, '\u0000').replace(/\$/g, '').replace(/\u0000/g, '$'), q.list === 'mod' ? 'Modified' : 'Main', q.skill || '', q.attempts, q.correct, q.attempts ? Math.round(100 * q.correct / q.attempts) : ''].map(cell).join(','));
     const skills = new Map();
@@ -962,7 +968,7 @@
       for (const [k, [a, c]] of skills) lines.push([k, a, c, a ? Math.round(100 * c / a) : ''].map(cell).join(','));
     }
     const date = new Date().toISOString().slice(0, 10);
-    download(`flurry-fight-results-${date}.csv`, lines.join('\n'), 'text/csv');
+    download(`snowdown-results-${date}.csv`, lines.join('\n'), 'text/csv');
   };
 
   setWrongs([]);

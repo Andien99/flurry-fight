@@ -416,6 +416,7 @@ import { World3D } from './world3d.js';
     if (now - S.lastThrow > 400) S.me.ammo = mine.ammo;
     if (mine.hp < (S.me.hp ?? 100) && wasAlive) flashDamage();
     S.me.hp = mine.hp; S.me.shield = mine.shield; S.me.kos = mine.kos;
+    setRun(mine.alive ? mine.run || 0 : 0);
   });
 
   // ---------- game status chat (left side) ----------
@@ -456,13 +457,50 @@ import { World3D } from './world3d.js';
     const h = $('hitmark'); h.className = 'hitmark'; void h.offsetWidth; h.className = 'hitmark on' + (ko ? ' ko' : '');
   }
 
+  // ---------- on a roll: knockouts in a row without being knocked out ----------
+  // The HUD chip beside your portrait and the icy screen edge show your current run.
+  function setRun(n) {
+    if (S.me.run === n) return;
+    S.me.run = n;
+    const chip = $('run-chip');
+    chip.hidden = n < 2;
+    if (n >= 2) { chip.querySelector('b').textContent = '×' + n; chip.classList.toggle('gold', n >= 5); }
+    $('edge').classList.toggle('roll', n >= F.ROLL_AURA);
+    $('edge').classList.toggle('roll-gold', n >= 5);
+  }
+  // A big callout in the middle of the screen when you reach a new tier.
+  function rollBanner(tier, n) {
+    const el = $('roll-banner');
+    el.querySelector('.rb-name').textContent = tier.name + '!';
+    el.querySelector('.rb-sub').textContent = `${n} knockouts in a row`;
+    el.className = 'roll-banner t' + Math.min(5, F.ROLL_TIERS.indexOf(tier) + 1);
+    el.hidden = false; void el.offsetWidth; el.classList.add('on');
+    clearTimeout(rollBanner.h); rollBanner.h = setTimeout(() => { el.hidden = true; }, 2200);
+  }
+  // Tier callouts only when a run reaches a new tier (and every knockout past the top one).
+  const newTier = (n) => { const t = F.rollTier(n); const top = F.ROLL_TIERS[F.ROLL_TIERS.length - 1]; return t && (t.n === n || t === top) ? t : null; };
+
   socket.on('ko', (e) => {
     world3d.burst(e.x, e.y, 30, 24, 160);
     world3d.floatText('KO!', e.x, e.y, 90);
     const by = e.by ? nameOf(e.by) : 'the snow';
     addLog(e.by ? `${who(e.by)} <span class="verb">knocked out</span> ${who(e.victim)}` : `${who(e.victim)} <span class="verb">was knocked out</span>`, e.by === S.pid ? 'mine' : e.victim === S.pid ? 'bad' : 'ko');
-    if (e.victim === S.pid) { S.koBy = e.by ? `by ${by}` : ''; S.deadAt = performance.now(); S.me.alive = false; S.mouse.down = false; }
-    if (e.by === S.pid) { toast(`You knocked out ${nameOf(e.victim)}!`); hitMarker(true); }
+    const tier = e.by ? newTier(e.run || 0) : null;
+    if (tier) addLog(`${who(e.by)} ${e.by === S.pid ? 'are' : 'is'} on a roll: <span class="verb roll">${esc(tier.name)}!</span> (${e.run} in a row)`, 'roll');
+    const endedTier = F.rollTier(e.ended || 0);
+    if (endedTier && e.ended >= F.ROLL_AURA) {
+      addLog(e.by ? `${who(e.by)} <span class="verb">ended</span> ${who(e.victim)}${e.victim === S.pid ? 'r' : "'s"} ${esc(endedTier.name)} run (${e.ended})` : `${who(e.victim)}${e.victim === S.pid ? 'r' : "'s"} ${esc(endedTier.name)} run <span class="verb">ended</span> (${e.ended})`, 'roll');
+    }
+    if (e.victim === S.pid) { S.koBy = e.by ? `by ${by}` : ''; S.deadAt = performance.now(); S.me.alive = false; S.mouse.down = false; setRun(0); }
+    if (e.by === S.pid) {
+      hitMarker(true);
+      setRun(e.run || 0);
+      if (tier) {
+        rollBanner(tier, e.run);
+        world3d.burst(e.x, e.y, 40, 36, 220, e.run >= 5 ? 0xffe28a : 0xbdf0ff, 3.6);
+      } else if (endedTier && e.ended >= F.ROLL_AURA) toast(`You ended ${nameOf(e.victim)}'s ${endedTier.name} run!`, 2200);
+      else toast(`You knocked out ${nameOf(e.victim)}!`);
+    }
   });
   socket.on('splat', (e) => world3d.burst(e.x, e.y, Math.max(4, e.z || 4), 8, 90, 0xffffff, 2.4));
   socket.on('hit', (e) => {
@@ -936,6 +974,7 @@ import { World3D } from './world3d.js';
       [`${me.correct}<small>/${me.attempted}</small>`, 'Questions right'],
       [me.bestStreak || 0, 'Best streak in a row'],
       [me.kos, 'Knockouts'],
+      [me.bestRun || 0, 'Most knockouts in a row'],
       [ORD(rank), 'Place'],
     ];
     for (const [v, l] of tiles) { const d = document.createElement('div'); d.innerHTML = `<b>${v}</b><span>${l}</span>`; st.appendChild(d); }

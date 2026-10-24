@@ -356,6 +356,19 @@
       ctx.strokeStyle = F.TEAM_COLOURS[info.team]; ctx.lineWidth = 4;
       ctx.beginPath(); ctx.ellipse(p.x, p.y + R - 4, R * 1.05, R * 0.42, 0, 0, Math.PI * 2); ctx.stroke();
     }
+    // on a roll (3+ knockouts in a row): a turning ring of ice spikes behind the body, more spikes the longer the run
+    if ((p.run || 0) >= F.ROLL_AURA) {
+      const n = Math.min(16, 6 + p.run * 2), spin = now / 700, pulse = 1 + Math.sin(now / 160) * 0.06;
+      ctx.fillStyle = p.run >= 5 ? '#ffe28a' : '#bdf0ff'; ctx.strokeStyle = INK; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let i = 0; i < n * 2; i++) {
+        const ang = spin + (i / (n * 2)) * Math.PI * 2, r = (i % 2 ? R + 7 : R + 15) * pulse;
+        const x = p.x + Math.cos(ang) * r, y = p.y + Math.sin(ang) * r;
+        if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      }
+      ctx.closePath();
+      ctx.save(); ctx.globalAlpha *= 0.85; ctx.fill(); ctx.restore(); ctx.stroke();
+    }
     // mitten
     const mx = p.x + Math.cos(a) * (R + 4), my = p.y + Math.sin(a) * (R + 4);
     ctx.fillStyle = hat; ctx.strokeStyle = INK; ctx.lineWidth = 2.5;
@@ -498,6 +511,7 @@
       if (snap) p.z = p.tz;
       p.hp = a[3]; p.shield = a[4]; p.alive = !!a[5]; p.serverAngle = a[6] / 100; p.inv = !!a[7];
       p.seq = a[10];
+      p.run = a[15] || 0;
       if (id !== world.meId) p.angle = p.serverAngle;
     }
     for (const id of [...world.players.keys()]) if (!seen.has(id)) world.players.delete(id);

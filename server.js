@@ -1,4 +1,4 @@
-// Flurry Fight — a live classroom snowball-fight quiz game.
+// Snowdown — a live classroom snowball-fight quiz game.
 // Server: Express serves the pages, Socket.IO runs the games.
 const path = require('path');
 const http = require('http');
@@ -102,7 +102,7 @@ function createGame(hostSocket, settings, questions, title, modified = []) {
   const code = newCode();
   const game = {
     code,
-    title: str(title, 80) || 'Flurry Fight',
+    title: str(title, 80) || 'Snowdown',
     hostToken: token(),
     hostSocketId: hostSocket.id,
     hostSeenAt: Date.now(),
@@ -141,6 +141,7 @@ function makePlayer(game, name, colour, look) {
     hp: FF.MAX_HP, shield: 0, ammo: 0,
     alive: false, respawnAt: 0, invulnUntil: 0, spawnSeq: 0, revealUntil: 0,
     kos: 0, deaths: 0, correct: 0, attempted: 0, streak: 0, bestStreak: 0,
+    run: 0, bestRun: 0, // knockouts in a row without being knocked out (the "on a roll" effect)
     mod: false, // gets the modified question list (only the host knows)
     skillStats: {}, missed: [],
     lastThrow: 0,
@@ -191,7 +192,7 @@ function startGame(game) {
   const list = shuffle([...game.players.values()]);
   list.forEach((p, i) => {
     p.team = game.settings.teams ? (i % 2 === 0 ? 'blue' : 'red') : null;
-    Object.assign(p, { kos: 0, deaths: 0, correct: 0, attempted: 0, streak: 0, bestStreak: 0, ammo: 0, shield: 0, skillStats: {}, missed: [] });
+    Object.assign(p, { kos: 0, deaths: 0, correct: 0, attempted: 0, streak: 0, bestStreak: 0, run: 0, bestRun: 0, ammo: 0, shield: 0, skillStats: {}, missed: [] });
     p.qOrder = shuffle(poolFor(game, p)); p.qPtr = 0; p.current = null; p.nextQAt = 0;
   });
   for (const p of list) spawnPlayer(game, p, now);
@@ -205,7 +206,7 @@ function results(game, viewer = 'host') {
   if (viewer === 'host') {
     const players = ranked.map((p) => ({
       id: p.pid, name: p.name, colour: p.colour, look: p.look, team: p.team, mod: p.mod,
-      kos: p.kos, deaths: p.deaths, correct: p.correct, attempted: p.attempted, bestStreak: p.bestStreak,
+      kos: p.kos, deaths: p.deaths, correct: p.correct, attempted: p.attempted, bestStreak: p.bestStreak, bestRun: p.bestRun,
     }));
     const questions = game.questions.map((q, i) => ({ q: q.q, skill: q.skill || '', list: q.list, attempts: game.qStats[i].attempts, correct: game.qStats[i].correct }));
     return { players, questions, teams, title: game.title };
@@ -214,7 +215,7 @@ function results(game, viewer = 'host') {
   const players = ranked.map((p) => ({ id: p.pid, name: p.name, colour: p.colour, look: p.look, team: p.team, kos: p.kos, deaths: p.deaths }));
   const me = game.players.get(viewer);
   const mine = me ? {
-    rank: ranked.indexOf(me) + 1, kos: me.kos, deaths: me.deaths, correct: me.correct, attempted: me.attempted, bestStreak: me.bestStreak,
+    rank: ranked.indexOf(me) + 1, kos: me.kos, deaths: me.deaths, correct: me.correct, attempted: me.attempted, bestStreak: me.bestStreak, bestRun: me.bestRun,
     skills: Object.entries(me.skillStats).map(([skill, v]) => ({ skill, attempted: v.a, correct: v.c })),
     missed: me.missed.slice(0, 6),
   } : null;
@@ -261,11 +262,16 @@ function knockOut(game, victim, attacker, now) {
   victim.shield = 0;
   victim.deaths++;
   victim.respawnAt = now + FF.RESPAWN_MS;
+  const ended = victim.run || 0; // the victim's run of knockouts ends here
+  victim.run = 0;
+  let run = 0;
   if (attacker) {
     attacker.kos++;
     if (attacker.team) game.teamScores[attacker.team]++;
+    run = attacker.run = (attacker.run || 0) + 1;
+    attacker.bestRun = Math.max(attacker.bestRun || 0, run);
   }
-  io.to(game.code).emit('ko', { victim: victim.pid, by: attacker ? attacker.pid : null, x: victim.x, y: victim.y });
+  io.to(game.code).emit('ko', { victim: victim.pid, by: attacker ? attacker.pid : null, x: victim.x, y: victim.y, run, ended });
 }
 
 // Is this player tucked inside a tree, igloo, locker, bin or snow pile, and not given away recently?
@@ -279,7 +285,7 @@ function sendSnapshots(game, now) {
   const list = [...game.players.values()].filter((p) => p.connected || p.alive);
   const rows = list.map((p) => [p.pid, Math.round(p.x), Math.round(p.y), p.hp, p.shield, p.alive ? 1 : 0,
     Math.round(p.angle * 100), now < p.invulnUntil ? 1 : 0, p.ammo, p.kos, p.spawnSeq, p.connected ? 1 : 0, 1,
-    Math.round(p.z), Math.round(p.pitch * 100)]);
+    Math.round(p.z), Math.round(p.pitch * 100), p.alive ? p.run || 0 : 0]);
   const hidden = list.map((p) => inCover(game, p, now));
   const base = {
     t: game.endsAt - now,
@@ -296,7 +302,7 @@ function sendSnapshots(game, now) {
       if (!hidden[i] || o === viewer) return row;
       if (game.settings.teams && o.team && o.team === viewer.team) return row;
       if (viewer.alive && (o.x - viewer.x) ** 2 + (o.y - viewer.y) ** 2 < R2) return row;
-      return [o.pid, 0, 0, 0, 0, 0, 0, 0, 0, o.kos, o.spawnSeq, o.connected ? 1 : 0, 0, 0, 0];
+      return [o.pid, 0, 0, 0, 0, 0, 0, 0, 0, o.kos, o.spawnSeq, o.connected ? 1 : 0, 0, 0, 0, 0];
     });
     io.to(viewer.socketId).volatile.emit('state', { ...base, p });
   }
@@ -646,4 +652,4 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => console.log(`Flurry Fight running on http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`Snowdown running on http://localhost:${PORT}`));

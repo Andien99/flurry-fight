@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Flurry Fight</title>
+<title>Snowdown</title>
 <link rel="stylesheet" href="/vendor/fonts/atkinson/latin-400.css">
 <link rel="stylesheet" href="/vendor/fonts/atkinson/latin-700.css">
 <link rel="stylesheet" href="/vendor/fonts/bricolage/latin-700.css">
@@ -18,7 +18,7 @@
   <canvas id="snowfall" aria-hidden="true"></canvas>
   <div class="join-wrap">
     <div class="join-card">
-      <div class="wordmark">Flurry<span>Fight</span></div>
+      <div class="wordmark">Snow<span>down</span></div>
       <p class="lede">Answer questions to make snowballs. Knock out everyone else.</p>
 
       <form id="f-code" class="join-step">
@@ -69,7 +69,7 @@
 <!-- Game -->
 <section id="s-game" class="game" hidden>
   <canvas id="view"></canvas>
-  <div class="edge" id="edge" aria-hidden="true"><i class="e-low"></i><i class="e-hit"></i><i class="e-shield"></i><i class="e-heal"></i></div>
+  <div class="edge" id="edge" aria-hidden="true"><i class="e-low"></i><i class="e-hit"></i><i class="e-shield"></i><i class="e-heal"></i><i class="e-roll"></i></div>
   <div class="crosshair" id="crosshair" aria-hidden="true"><i></i><i></i><i></i><i></i><b class="hitmark" id="hitmark"></b></div>
 
   <div class="hud hud-top"><div class="timer" id="timer">5:00</div></div>
@@ -96,6 +96,7 @@
   <div class="pcard" id="pcard">
     <canvas class="portrait" id="portrait" width="240" height="240" aria-hidden="true"></canvas>
     <div class="pfloat" id="pfloat" aria-hidden="true"></div>
+    <div class="run-chip" id="run-chip" hidden title="Knockouts in a row"><span class="rc-flake" aria-hidden="true">❄</span><b>×2</b></div>
     <div class="pslab">
       <div class="pbar sh"><i id="sh-bar" style="width:0"></i><b id="sh-num">0/100</b></div>
       <div class="pbar hp"><i id="hp-bar" style="width:100%"></i><b id="hp-num">100/100</b></div>
@@ -139,6 +140,7 @@
 
   <div class="ko-overlay" id="ko" hidden><div><div class="big">Knocked out</div><p id="ko-by"></p><p id="ko-count"></p></div></div>
   <div class="toast" id="toast" hidden></div>
+  <div class="roll-banner" id="roll-banner" hidden aria-live="polite"><div class="rb-name"></div><div class="rb-sub"></div></div>
   <div class="hidden-chip" id="hidden-chip" hidden>Hidden. Enemies can't see you unless they get close.</div>
   <div class="touch" id="touch" hidden>
     <div class="joystick" id="stick" hidden><i></i></div>

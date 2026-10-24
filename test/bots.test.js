@@ -35,8 +35,15 @@ const WAYPOINTS = [
   const made = await new Promise((r) => host.emit('host:create', { title: 'Bots', questions, settings: { map: MAP, duration: 600, ammoPerCorrect: 5, wrongDelay: 0 } }, r));
   ok(made.ok && made.settings.map === MAP, `game created on ${MAP}`);
 
-  const stats = { hits: 0, kos: 0, pickups: 0, splats: 0, correct: 0, floors: new Set(), covered: 0 };
-  host.on('hit', () => stats.hits++); host.on('ko', () => stats.kos++); host.on('pickup', () => stats.pickups++); host.on('splat', () => stats.splats++);
+  const stats = { hits: 0, kos: 0, pickups: 0, splats: 0, correct: 0, floors: new Set(), covered: 0, runs: {}, bestRun: 0, runErr: '' };
+  host.on('hit', () => stats.hits++); host.on('ko', (e) => {
+    stats.kos++;
+    // knockout runs: the thrower's run counts up from 1, the victim's ends
+    const run = (stats.runs[e.by] || 0) + 1, ended = stats.runs[e.victim] || 0;
+    if (e.by) { if (e.run !== run) stats.runErr = `run ${e.run}, expected ${run}`; stats.runs[e.by] = run; stats.bestRun = Math.max(stats.bestRun, run); }
+    if (e.ended !== ended) stats.runErr = `ended ${e.ended}, expected ${ended}`;
+    stats.runs[e.victim] = 0;
+  }); host.on('pickup', () => stats.pickups++); host.on('splat', () => stats.splats++);
   host.on('state', (s) => { if (s.hid.length) stats.covered = Math.max(stats.covered, s.hid.length); });
 
   const bots = [];
@@ -111,6 +118,8 @@ const WAYPOINTS = [
   ok(stats.splats > 10, `snowballs were thrown and landed (${stats.splats})`);
   ok(stats.hits > 0, `snowballs hit students (${stats.hits} hits, ${stats.kos} knockouts)`);
   if (MAP === 'village') ok(stats.floors.has('canal') && stats.floors.has('street'), `students used the canal and the streets (${[...stats.floors].join(', ')})`);
+  ok(!stats.runErr, 'knockout runs count up and end correctly' + (stats.runErr ? ` (${stats.runErr})` : ` (best ${stats.bestRun})`));
+  ok(results.players.every((p) => typeof p.bestRun === 'number'), 'results include each student\'s most knockouts in a row');
   ok(!/Error|TypeError/.test(serverErr), 'no server errors' + (serverErr ? `:\n${serverErr.slice(0, 600)}` : ''));
   console.log(`  (pickups collected: ${stats.pickups}, most hidden at once: ${stats.covered})`);
   host.close(); for (const b of bots) b.s.close(); server.kill();

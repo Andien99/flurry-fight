@@ -1,5 +1,5 @@
 {
-  "name": "flurry-fight",
+  "name": "snowdown",
   "version": "1.0.0",
   "description": "A live classroom snowball-fight quiz game",
   "main": "server.js",

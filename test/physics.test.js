@@ -107,5 +107,20 @@ for (const c of V.COVERS) {
   const pos = V.resolveCollisions(c.x, c.y, 22, c.z);
   ok(Math.hypot(pos.x - c.x, pos.y - c.y) < c.r - 2, `cover ${V.OBJECTS[c.obj].k} at ${c.x},${c.y} can't be reached`);
 }
+// 5. Jumping has a 1 second cooldown: holding jump on open ground gives one jump a second.
+{
+  const p = { x: 1200, y: 650, z: M.groundAt(1200, 650, 0), vz: 0, grounded: true };
+  const dt = 1 / 60;
+  let jumps = 0, last = -1, minGap = Infinity;
+  for (let t = 0; t < 5 / dt; t++) {
+    const before = p.vz;
+    M.settle(p, dt, true);
+    if (p.vz > 0 && before <= 0) { jumps++; if (last >= 0) minGap = Math.min(minGap, (t - last) * dt); last = t; }
+  }
+  ok(jumps >= 4 && jumps <= 5, `jump cooldown: ${jumps} jumps in 5 s of holding jump (expected 5)`);
+  ok(minGap >= FF.JUMP_COOLDOWN - 1e-6, `jump cooldown: jumps ${minGap.toFixed(2)} s apart`);
+}
+// 6. Knockout run tiers.
+ok(FF.rollTier(1) === null && FF.rollTier(2).name === 'Double Chill' && FF.rollTier(3).name === 'Snowballing' && FF.rollTier(6).name === 'Whiteout' && FF.rollTier(12).name === 'Ice Age', 'knockout run tiers');
 console.log(fails ? `${fails} failures` : 'all physics checks passed');
 process.exit(fails ? 1 : 0);

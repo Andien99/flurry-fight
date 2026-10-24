@@ -13,6 +13,7 @@
   const JUMP_SPEED = 340;
   const GRAVITY = 1150;      // for players
   const JUMP_MAX = (JUMP_SPEED * JUMP_SPEED) / (2 * GRAVITY); // ≈ 50
+  const JUMP_COOLDOWN = 1;   // seconds from one jump to the next (a jump is in the air ≈ 0.6 s)
   const MAX_HP = 100;
   const MAX_SHIELD = 100;
   const SNOWBALL = { speed: 820, radius: 8, life: 1.6, damage: 25, cooldown: 0.28, gravity: 320 };
@@ -22,6 +23,17 @@
   const REVEAL_THROW_MS = 1200; // throwing gives away your hiding spot
   const REVEAL_HIT_MS = 1000;   // so does getting hit
   const STEP_UP = 30;           // how high a step you can walk up (stairs)
+  // Knockouts in a row without being knocked out yourself. Each tier gets a callout;
+  // from 3 in a row the player glows with a frost aura everyone can see.
+  const ROLL_TIERS = [
+    { n: 2, name: 'Double Chill' },
+    { n: 3, name: 'Snowballing' },
+    { n: 4, name: 'Avalanche' },
+    { n: 5, name: 'Whiteout' },
+    { n: 7, name: 'Ice Age' },
+  ];
+  const ROLL_AURA = 3;
+  const rollTier = (n) => { let t = null; for (const r of ROLL_TIERS) if (n >= r.n) t = r; return t; };
 
   // What each kind of map object does. Positions are relative to the object's x, y.
   //   rects/circles: solid (block players and snowballs)
@@ -143,11 +155,12 @@
     // Vertical movement for one frame: stand on floors, walk up and down stairs, jump, fall,
     // and bump your head on ceilings. `p` has x, y, z, vz and grounded; call after moving x and y.
     function settle(p, dt, wantJump) {
+      if (p.jumpCd > 0) p.jumpCd = Math.max(0, p.jumpCd - dt);
       const ground = groundAt(p.x, p.y, p.z);
       const stickDown = p.grounded && p.vz <= 0 && p.z - ground <= STEP_UP; // stay on the stairs going down
       if ((p.z <= ground + 0.5 || stickDown) && p.vz <= 0) {
         p.z = ground; p.vz = 0; p.grounded = true;
-        if (wantJump) { p.vz = JUMP_SPEED; p.grounded = false; }
+        if (wantJump && !(p.jumpCd > 0)) { p.vz = JUMP_SPEED; p.grounded = false; p.jumpCd = JUMP_COOLDOWN; }
       } else p.grounded = false;
       if (!p.grounded) {
         const ceiling = ceilingAt(p.x, p.y, p.z);
@@ -664,7 +677,7 @@
   };
 
   const api = {
-    BORDER, STEP_UP, PLAYER_RADIUS, PLAYER_SPEED, RUN_SPEED, PLAYER_HEIGHT, EYE_HEIGHT, JUMP_SPEED, GRAVITY, JUMP_MAX,
+    BORDER, STEP_UP, PLAYER_RADIUS, PLAYER_SPEED, RUN_SPEED, PLAYER_HEIGHT, EYE_HEIGHT, JUMP_SPEED, GRAVITY, JUMP_MAX, JUMP_COOLDOWN, ROLL_TIERS, ROLL_AURA, rollTier,
     MAX_HP, MAX_SHIELD, SNOWBALL, RESPAWN_MS, INVULN_MS,
     REVEAL_DIST, REVEAL_THROW_MS, REVEAL_HIT_MS,
     HATS, STACHES, cleanLook, KINDS, PICKUP_TYPES, PLAYER_COLOURS, TEAM_COLOURS, clamp,

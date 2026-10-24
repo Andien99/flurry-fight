@@ -457,6 +457,34 @@ const flashMat = new THREE.MeshBasicMaterial({ color: 0xff2a2a, transparent: tru
 const bubbleMat = new THREE.MeshBasicMaterial({ color: 0x5aa8ff, transparent: true, opacity: 0.16, depthWrite: false });
 const bubbleWire = new THREE.MeshBasicMaterial({ color: 0x9cd0ff, transparent: true, opacity: 0.55, wireframe: true, depthWrite: false });
 
+// Frost aura for a player on a roll (3+ knockouts in a row): a ring of ice crystals
+// orbiting the body plus a glowing ring on the snow. One merged mesh each, so it's cheap.
+const auraCrystalGeo = (() => {
+  const geos = [];
+  const N = 8;
+  for (let i = 0; i < N; i++) {
+    const g = new THREE.OctahedronGeometry(i % 2 ? 3.2 : 4.6, 0);
+    g.scale(0.7, 1.9, 0.7);
+    const a = (i / N) * Math.PI * 2, r = F.PLAYER_RADIUS + 13;
+    g.rotateZ(i % 2 ? 0.35 : -0.35);
+    g.translate(Math.cos(a) * r, (i % 2 ? 8 : -4), Math.sin(a) * r);
+    geos.push(g);
+  }
+  return mergeGeometries(geos, false);
+})();
+const auraRingGeo = new THREE.RingGeometry(F.PLAYER_RADIUS + 6, F.PLAYER_RADIUS + 20, 32).rotateX(-Math.PI / 2);
+function buildAura() {
+  const g = new THREE.Group();
+  const crystals = new THREE.Mesh(auraCrystalGeo, new THREE.MeshBasicMaterial({ color: 0xbdf0ff, transparent: true, opacity: 0.85, depthWrite: false }));
+  crystals.position.y = F.PLAYER_RADIUS;
+  const ring = new THREE.Mesh(auraRingGeo, new THREE.MeshBasicMaterial({ color: 0x8fe3ff, transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending }));
+  ring.position.y = 1.2;
+  g.add(crystals, ring);
+  g.visible = false; g.renderOrder = 4;
+  g.userData = { crystals, ring };
+  return g;
+}
+
 function buildCharacter(info, teams) {
   const R = F.PLAYER_RADIUS;
   const colour = info.colour || '#888888';
@@ -492,9 +520,10 @@ function buildCharacter(info, teams) {
   bubble.add(new THREE.Mesh(G('bubble', () => new THREE.SphereGeometry(R * 1.55, 20, 14)), bubbleMat.clone()));
   bubble.add(new THREE.Mesh(G('bubblewire', () => new THREE.IcosahedronGeometry(R * 1.58, 1)), bubbleWire.clone()));
   bubble.position.y = R; bubble.visible = false; bubble.renderOrder = 4; body.add(bubble);
+  const aura = buildAura(); body.add(aura);
   const shadow = blob(0, 0, 54, 54); root.add(shadow);
   const tag = nameTag(); tag.position.y = R * 2 + 34; root.add(tag);
-  root.userData = { body, tag, shadow, mitR, prop, flash, bubble, hitAt: -1e9, shieldAt: -1e9 };
+  root.userData = { body, tag, shadow, mitR, prop, flash, bubble, aura, hitAt: -1e9, shieldAt: -1e9 };
   return root;
 }
 
@@ -1437,6 +1466,19 @@ export class World3D {
         u.bubble.scale.setScalar(pulse);
         u.bubble.rotation.y = now / 1500;
         u.bubble.children[0].material.opacity = 0.1 + 0.08 * (p.shield / 100) + (sinceShield < 0.6 ? 0.15 : 0);
+      }
+      // frost aura while on a roll: icy blue, turning gold from 5 in a row; spins faster the longer the run
+      const run = p.run || 0;
+      u.aura.visible = run >= F.ROLL_AURA;
+      if (u.aura.visible) {
+        const gold = run >= 5;
+        const { crystals, ring } = u.aura.userData;
+        crystals.material.color.setHex(gold ? 0xffe28a : 0xbdf0ff);
+        ring.material.color.setHex(gold ? 0xffc93c : 0x8fe3ff);
+        u.aura.rotation.y = -u.body.rotation.y + now / (gold ? 380 : 600);
+        crystals.position.y = F.PLAYER_RADIUS + Math.sin(now / 260) * 3;
+        ring.material.opacity = 0.3 + 0.2 * (0.5 + 0.5 * Math.sin(now / 180));
+        u.aura.scale.setScalar(1 + Math.min(0.25, (run - F.ROLL_AURA) * 0.06));
       }
     }
     for (const [id, ch] of this.players) if (!seen.has(id)) { this.scene.remove(ch); this.players.delete(id); }

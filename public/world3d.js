@@ -344,16 +344,18 @@ function nameTag() {
   s.userData = { c, tex, key: '' };
   return s;
 }
-function drawTag(tag, name, hp, shield) {
-  const key = `${name}|${hp}|${shield}`;
+function drawTag(tag, name, hp, shield, team) {
+  const key = `${name}|${hp}|${shield}|${team}`;
   if (tag.userData.key === key) return;
   tag.userData.key = key;
   const { c, tex } = tag.userData; const g = c.getContext('2d');
   g.clearRect(0, 0, c.width, c.height);
   g.font = '700 30px "Atkinson Hyperlegible", system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
   const w = Math.min(250, g.measureText(name).width + 28);
-  g.fillStyle = 'rgba(27,42,74,0.78)';
+  // team games: the name pill is the team's colour, so friend and foe read at a glance
+  g.fillStyle = team === 'blue' ? 'rgba(32,86,200,0.9)' : team === 'red' ? 'rgba(196,44,36,0.9)' : 'rgba(27,42,74,0.78)';
   g.beginPath(); g.roundRect(128 - w / 2, 2, w, 42, 21); g.fill();
+  if (team) { g.strokeStyle = 'rgba(255,255,255,0.85)'; g.lineWidth = 3; g.stroke(); }
   g.fillStyle = '#fff'; g.fillText(name, 128, 24);
   g.fillStyle = 'rgba(27,42,74,0.6)'; g.fillRect(68, 54, 120, 14);
   g.fillStyle = hp > 50 ? '#57c46a' : hp > 25 ? '#ffc93c' : '#e2453c'; g.fillRect(70, 56, 116 * Math.max(0, hp) / 100, 10);
@@ -487,10 +489,10 @@ function buildAura() {
 
 function buildCharacter(info, teams) {
   const R = F.PLAYER_RADIUS;
-  const colour = info.colour || '#888888';
+  const lc = F.lookColours(info, teams); // team colour in a team game
+  const colour = lc.colour;
   const look = info.look || {};
-  const hatHex = teams && info.team ? F.TEAM_COLOURS[info.team] : null;
-  const hat = hatHex ? parseInt(hatHex.slice(1), 16) : shade(colour, -0.35);
+  const hat = lc.hat ? parseInt(lc.hat.slice(1), 16) : shade(colour, -0.35);
   const root = new THREE.Group();
   const body = new THREE.Group(); root.add(body);
   body.add(mesh(G('body', () => new THREE.SphereGeometry(R, 20, 14)), toon(colour), 0, R, 0, true, 1.08));
@@ -1446,7 +1448,7 @@ export class World3D {
       const s = Math.max(0.4, 1 - z / 120); ch.userData.shadow.scale.set(54 * s, 1, 54 * s);
       ch.userData.body.rotation.y = Math.atan2(Math.cos(p.angle || 0), Math.sin(p.angle || 0));
       ch.userData.tag.position.y = z + F.PLAYER_RADIUS * 2 + 34;
-      drawTag(ch.userData.tag, info.name || '', p.hp, p.shield);
+      drawTag(ch.userData.tag, info.name || '', p.hp, p.shield, world.teams && info.team ? info.team : null);
       const flick = p.inv && Math.floor(now / 100) % 2 === 0;
       ch.userData.body.visible = !flick;
       const u = ch.userData;

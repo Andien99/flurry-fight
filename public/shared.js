@@ -670,6 +670,14 @@
 
   const PLAYER_COLOURS = ['#e85d75', '#f29e4c', '#f1c453', '#7ac74f', '#2ec4b6', '#3a86ff', '#8e6cf0', '#ff70a6', '#6d9dc5', '#a0522d'];
   const TEAM_COLOURS = { blue: '#2f6fe4', red: '#e2453c' };
+  const TEAM_DARK = { blue: '#1a4296', red: '#9c231d' };   // hats and mittens in team games
+  const TEAM_NAMES = { blue: 'Blue', red: 'Red' };
+  // The colours a character is drawn in. In a team game everyone is their team's colour
+  // (hat and moustache still tell players apart); otherwise it's the colour they picked.
+  function lookColours(info, teams) {
+    if (teams && info && TEAM_COLOURS[info.team]) return { colour: TEAM_COLOURS[info.team], hat: TEAM_DARK[info.team] };
+    return { colour: (info && info.colour) || '#888888', hat: null };
+  }
   const PICKUP_TYPES = {
     shield: { label: 'Shield Can', radius: 18 },
     cocoa: { label: 'Hot Cocoa', radius: 18 },
@@ -677,7 +685,7 @@
   };
 
   const api = {
-    BORDER, STEP_UP, PLAYER_RADIUS, PLAYER_SPEED, RUN_SPEED, PLAYER_HEIGHT, EYE_HEIGHT, JUMP_SPEED, GRAVITY, JUMP_MAX, JUMP_COOLDOWN, ROLL_TIERS, ROLL_AURA, rollTier,
+    BORDER, STEP_UP, PLAYER_RADIUS, PLAYER_SPEED, RUN_SPEED, PLAYER_HEIGHT, EYE_HEIGHT, JUMP_SPEED, GRAVITY, JUMP_MAX, JUMP_COOLDOWN, TEAM_DARK, TEAM_NAMES, lookColours, ROLL_TIERS, ROLL_AURA, rollTier,
     MAX_HP, MAX_SHIELD, SNOWBALL, RESPAWN_MS, INVULN_MS,
     REVEAL_DIST, REVEAL_THROW_MS, REVEAL_HIT_MS,
     HATS, STACHES, cleanLook, KINDS, PICKUP_TYPES, PLAYER_COLOURS, TEAM_COLOURS, clamp,

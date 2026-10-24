@@ -36,7 +36,7 @@ Tablets and phones work too: drag on the left side of the screen to move, drag o
 |---|---|
 | Map | Snowy Meadow or Snow Village (remembered for next time) |
 | Length | 2–15 minutes |
-| Mode | Free for all, or two teams (blue vs red, auto-balanced, no friendly fire) |
+| Mode | Free for all, or two teams (blue vs red, auto-balanced, no friendly fire). In a team game every character is drawn in its team's colour (hat and moustache still tell players apart), name tags are blue or red, and each student sees a "You're on the Blue team" banner at the start plus a team badge on their player card all game. The lobby tells students teams are picked when the game starts. |
 | Snowballs per correct answer | 1–10 (bag holds 30) |
 | Pause after a wrong answer | none to 5 seconds |
 | Late joining | allowed or locked once the game starts |

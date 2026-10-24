@@ -343,8 +343,9 @@
 
   function drawPlayer(ctx, p, info, isMe, teams, now) {
     const R = F.PLAYER_RADIUS;
-    const colour = info.colour || '#888';
-    const hat = teams && info.team ? F.TEAM_COLOURS[info.team] : shade(colour, -0.35);
+    const lc = F.lookColours(info, teams); // team colour in a team game
+    const colour = lc.colour;
+    const hat = lc.hat || shade(colour, -0.35);
     const a = p.angle || 0;
     if (p.inv && Math.floor(now / 100) % 2 === 0) ctx.globalAlpha = 0.45;
     else if ((p.z || 0) < -30) ctx.globalAlpha = 0.6; // down in the canal or the tunnel

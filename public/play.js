@@ -176,11 +176,39 @@ import { World3D } from './world3d.js';
     g.clearRect(0, 0, c.width, c.height);
     const info = S.world.roster.get(S.pid) || {};
     AV.draw(g, 80, 92, 48, { colour: S.colour, ...(info.look || S.look) }, 'happy', 0);
+    $('wait-teams').hidden = !S.world.teams;
+  }
+
+  // ---------- which team am I on? ----------
+  // A badge on the player card the whole game, and a big banner when the game starts
+  // (or when you join late) so nobody has to guess.
+  function updateTeamUI() {
+    const info = S.world.roster.get(S.pid) || {};
+    const team = S.world.teams && F.TEAM_COLOURS[info.team] ? info.team : null;
+    const badge = $('team-badge');
+    badge.hidden = !team;
+    if (team) {
+      badge.textContent = `${F.TEAM_NAMES[team]} team`;
+      badge.style.background = F.TEAM_COLOURS[team];
+    }
+    if (S.screen === 's-game') {
+      world3d.setViewmodelColour(F.lookColours({ colour: S.colour, ...info }, S.world.teams).colour);
+      if (team && team !== S.shownTeam) {
+        S.shownTeam = team;
+        const el = $('team-banner');
+        el.querySelector('.tb-name').textContent = `${F.TEAM_NAMES[team]} team`;
+        el.style.setProperty('--team', F.TEAM_COLOURS[team]);
+        el.hidden = false; el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
+        clearTimeout(updateTeamUI.h); updateTeamUI.h = setTimeout(() => { el.hidden = true; }, 4200);
+      }
+    }
   }
 
   socket.on('roster', (r) => {
     S.world.roster = new Map(r.players.map((p) => [p.id, p]));
     if (r.settings) { S.settings = r.settings; S.world.teams = !!r.settings.teams; ensureMap(r.settings.map); }
+    updateTeamUI();
+    if (S.screen === 's-wait') $('wait-teams').hidden = !S.world.teams;
     if (S.screen === 's-wait') {
       const list = $('wait-list');
       list.textContent = '';
@@ -192,7 +220,7 @@ import { World3D } from './world3d.js';
       }
     }
   });
-  socket.on('started', () => { if (S.pid) { S.openingRight = 0; S.openingDone = false; enterGame(); } });
+  socket.on('started', () => { if (S.pid) { S.openingRight = 0; S.openingDone = false; S.shownTeam = null; enterGame(); } });
   socket.on('ended', (res) => { if (S.pid) showResults(res); });
   socket.on('kicked', () => leave('Your teacher removed you from the game.'));
   socket.on('closed', () => leave('That game has closed.'));
@@ -238,7 +266,7 @@ import { World3D } from './world3d.js';
     show('s-game');
     resize();
     $('log').textContent = '';
-    world3d.setViewmodelColour((S.world.roster.get(S.pid) || {}).colour || S.colour);
+    updateTeamUI(); // team badge, banner and first-person mitten colour
     if (coarse) $('touch').hidden = false;
     setMode(S.mode || 'question');
     buildMinimapBase();
@@ -671,7 +699,8 @@ import { World3D } from './world3d.js';
     g.clearRect(0, 0, c.width, c.height);
     const expr = expression(now);
     const shake = expr === 'hurt' && now - (S.hurtAt || -1e9) < 400 ? Math.sin(now / 25) * 4 : 0;
-    AV.draw(g, 120 + shake, 140, 80, { colour: info.colour || S.colour, ...(info.look || S.look), hatColour: teams ? F.TEAM_COLOURS[info.team] : undefined }, expr, now);
+    const lc = F.lookColours({ colour: S.colour, ...info }, !!teams);
+    AV.draw(g, 120 + shake, 140, 80, { ...(info.look || S.look), colour: lc.colour, hatColour: lc.hat || undefined }, expr, now);
     $('pcard').dataset.mood = expr;
   }
 
@@ -919,7 +948,8 @@ import { World3D } from './world3d.js';
     const c = document.createElement('canvas');
     c.width = 220; c.height = 220; c.className = 'pod-avatar';
     c.setAttribute('aria-hidden', 'true');
-    const look = { colour: p.colour, ...(p.look || {}), hatColour: teams && p.team ? F.TEAM_COLOURS[p.team] : undefined };
+    const lc = F.lookColours(p, !!teams);
+    const look = { ...(p.look || {}), colour: lc.colour, hatColour: lc.hat || undefined };
     if (AV) AV.draw(c.getContext('2d'), 110, 128, 72, look, place === 1 ? 'happy' : 'normal', 0);
     return c;
   }

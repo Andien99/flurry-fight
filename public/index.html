@@ -61,6 +61,7 @@
       <canvas id="me-preview" width="160" height="160"></canvas>
       <div class="big" id="wait-name"></div>
       <p>You're in. The game starts when your teacher presses Start.</p>
+      <p class="wait-teams" id="wait-teams" hidden>This is a <b>team game</b>. You'll be put on the <b class="t-blue">Blue</b> or <b class="t-red">Red</b> team when it starts.</p>
       <div class="pill-list" id="wait-list"></div>
     </div>
   </div>
@@ -96,6 +97,7 @@
   <div class="pcard" id="pcard">
     <canvas class="portrait" id="portrait" width="240" height="240" aria-hidden="true"></canvas>
     <div class="pfloat" id="pfloat" aria-hidden="true"></div>
+    <div class="team-badge" id="team-badge" hidden></div>
     <div class="run-chip" id="run-chip" hidden title="Knockouts in a row"><span class="rc-flake" aria-hidden="true">❄</span><b>×2</b></div>
     <div class="pslab">
       <div class="pbar sh"><i id="sh-bar" style="width:0"></i><b id="sh-num">0/100</b></div>
@@ -140,6 +142,7 @@
 
   <div class="ko-overlay" id="ko" hidden><div><div class="big">Knocked out</div><p id="ko-by"></p><p id="ko-count"></p></div></div>
   <div class="toast" id="toast" hidden></div>
+  <div class="team-banner" id="team-banner" hidden aria-live="polite"><div class="tb-sub">You're on the</div><div class="tb-name"></div><div class="tb-hint">Your team is the same colour as you</div></div>
   <div class="roll-banner" id="roll-banner" hidden aria-live="polite"><div class="rb-name"></div><div class="rb-sub"></div></div>
   <div class="hidden-chip" id="hidden-chip" hidden>Hidden. Enemies can't see you unless they get close.</div>
   <div class="touch" id="touch" hidden>
